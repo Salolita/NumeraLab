@@ -17,16 +17,16 @@ export const MethodSelector: React.FC<MethodSelectorProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <label className="text-sm font-semibold text-slate-800">
           انتخاب روش حل عددی
         </label>
         <button
           type="button"
           onClick={() => setShowSecantExplanation(!showSecantExplanation)}
-          className="text-xs text-sky-700 hover:text-sky-900 flex items-center gap-1 cursor-pointer font-medium"
+          className="min-h-11 text-right leading-relaxed sm:min-h-0 text-xs text-sky-700 hover:text-sky-900 flex items-center gap-1 cursor-pointer font-medium"
         >
-          <HelpCircle className="w-3.5 h-3.5" />
+          <HelpCircle className="w-3.5 h-3.5 shrink-0" />
           <span>تفاوت روش «وتری (Secant)» با «نابجایی (False Position)»</span>
         </button>
       </div>
@@ -59,7 +59,7 @@ export const MethodSelector: React.FC<MethodSelectorProps> = ({
       )}
 
       {/* 4 Methods Selector Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-2">
         {(Object.keys(NUMERICAL_METHODS) as MethodType[]).map((key) => {
           const m = NUMERICAL_METHODS[key];
           const isSelected = selectedMethod === key;
@@ -68,7 +68,7 @@ export const MethodSelector: React.FC<MethodSelectorProps> = ({
               key={key}
               type="button"
               onClick={() => setSelectedMethod(key)}
-              className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+              className={`min-w-0 p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
                 isSelected
                   ? 'border-sky-600 bg-sky-50/60 ring-2 ring-sky-500/20 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
@@ -80,11 +80,11 @@ export const MethodSelector: React.FC<MethodSelectorProps> = ({
                     {m.nameFa}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono" dir="ltr">
+                <div className="text-[11px] text-slate-500 font-mono wrap-anywhere" dir="ltr">
                   {m.nameEn}
                 </div>
               </div>
-              <div className="mt-2 text-[11px] text-slate-500 pt-1.5 border-t border-slate-100 flex items-center justify-between">
+              <div className="mt-2 text-[11px] text-slate-500 pt-1.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-x-1">
                 <span>مرتبه:</span>
                 <span className="font-mono text-slate-700 font-medium">
                   {key === 'newton' ? '۲ (مربعی)' : key === 'secant' ? '۱.۶۱۸' : '۱ (خطی)'}
@@ -97,9 +97,9 @@ export const MethodSelector: React.FC<MethodSelectorProps> = ({
 
       {/* Active Method Brief Meta */}
       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2 text-slate-600">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
           <span className="font-semibold text-slate-800">فرمول تکرار:</span>
-          <span className="font-mono font-medium text-sky-800" dir="ltr">
+          <span className="font-mono font-medium text-sky-800 wrap-anywhere" dir="ltr">
             {currentInfo.formula}
           </span>
         </div>

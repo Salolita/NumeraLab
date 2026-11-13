@@ -136,6 +136,8 @@ export function solveSecant({ fn, x0, x1, options }: SecantParams): SolverResult
     let fxNext = 0;
     try {
       fxNext = fn(xNext);
+      if (!Number.isFinite(fxNext)) throw new Error('مقدار تابع متناهی نیست.');
+      iterations[iterations.length - 1].nextResidual = Math.abs(fxNext);
     } catch (err: any) {
       return {
         method: 'secant',

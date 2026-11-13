@@ -4,18 +4,18 @@ import { AlertCircle, CheckCircle } from 'lucide-react';
 
 interface MethodParametersProps {
   method: MethodType;
-  a: number;
-  setA: (val: number) => void;
-  b: number;
-  setB: (val: number) => void;
-  x0: number;
-  setX0: (val: number) => void;
-  x1: number;
-  setX1: (val: number) => void;
-  tolerance: number;
-  setTolerance: (val: number) => void;
-  maxIterations: number;
-  setMaxIterations: (val: number) => void;
+  a: string;
+  setA: (val: string) => void;
+  b: string;
+  setB: (val: string) => void;
+  x0: string;
+  setX0: (val: string) => void;
+  x1: string;
+  setX1: (val: string) => void;
+  tolerance: string;
+  setTolerance: (val: string) => void;
+  maxIterations: string;
+  setMaxIterations: (val: string) => void;
   stoppingCriterion: StoppingCriterion;
   setStoppingCriterion: (crit: StoppingCriterion) => void;
   evaluatedFa?: number | null;
@@ -64,18 +64,18 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
       {/* Dynamic Initial Points / Interval */}
       {isBracketing && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
             <label className="text-xs font-semibold text-slate-800">
               حدود بازه محصورکننده [a, b]
             </label>
             {bracketConditionMet && (
               <span className="text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
-                <CheckCircle className="w-3.5 h-3.5" /> شرط بولزانو برقرار است (f(a)·f(b) &lt; 0)
+                <CheckCircle className="w-3.5 h-3.5 shrink-0" /> شرط بولزانو برقرار است (f(a)·f(b) &lt; 0)
               </span>
             )}
             {bracketConditionFailed && (
               <span className="text-[11px] text-rose-700 flex items-center gap-1 font-medium">
-                <AlertCircle className="w-3.5 h-3.5" /> هشدار: f(a) و f(b) هم‌علامت هستند
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> هشدار: f(a) و f(b) هم‌علامت هستند
               </span>
             )}
           </div>
@@ -83,14 +83,15 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
             <div>
               <span className="text-xs text-slate-500 block mb-1">کران پایین (a):</span>
               <input
-                type="number"
-                step="any"
+                type="text"
+                dir="ltr"
+                aria-label="کران پایین"
                 value={a}
-                onChange={(e) => setA(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+                onChange={(e) => setA(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
               />
-              {evaluatedFa !== null && evaluatedFa !== undefined && !Number.isNaN(evaluatedFa) && (
-                <div className="text-[11px] text-slate-400 mt-1 font-mono" dir="ltr">
+              {evaluatedFa !== null && evaluatedFa !== undefined && Number.isFinite(evaluatedFa) && (
+                <div className="text-[11px] text-slate-400 mt-1 font-mono wrap-anywhere" dir="ltr">
                   f(a) = {evaluatedFa.toFixed(4)}
                 </div>
               )}
@@ -98,14 +99,15 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
             <div>
               <span className="text-xs text-slate-500 block mb-1">کران بالا (b):</span>
               <input
-                type="number"
-                step="any"
+                type="text"
+                dir="ltr"
+                aria-label="کران بالا"
                 value={b}
-                onChange={(e) => setB(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+                onChange={(e) => setB(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
               />
-              {evaluatedFb !== null && evaluatedFb !== undefined && !Number.isNaN(evaluatedFb) && (
-                <div className="text-[11px] text-slate-400 mt-1 font-mono" dir="ltr">
+              {evaluatedFb !== null && evaluatedFb !== undefined && Number.isFinite(evaluatedFb) && (
+                <div className="text-[11px] text-slate-400 mt-1 font-mono wrap-anywhere" dir="ltr">
                   f(b) = {evaluatedFb.toFixed(4)}
                 </div>
               )}
@@ -121,11 +123,12 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
           </label>
           <div className="max-w-xs">
             <input
-              type="number"
-              step="any"
-              value={x0}
-              onChange={(e) => setX0(parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+              type="text"
+                dir="ltr"
+              aria-label="حدس اول"
+                value={x0}
+              onChange={(e) => setX0(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
             />
           </div>
           <span className="text-[11px] text-slate-500">
@@ -143,21 +146,23 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
             <div>
               <span className="text-xs text-slate-500 block mb-1">حدس اول (x₀):</span>
               <input
-                type="number"
-                step="any"
+                type="text"
+                dir="ltr"
+                aria-label="حدس اول"
                 value={x0}
-                onChange={(e) => setX0(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+                onChange={(e) => setX0(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
               />
             </div>
             <div>
               <span className="text-xs text-slate-500 block mb-1">حدس دوم (x₁):</span>
               <input
-                type="number"
-                step="any"
+                type="text"
+                dir="ltr"
+                aria-label="حدس دوم"
                 value={x1}
-                onChange={(e) => setX1(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+                onChange={(e) => setX1(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
               />
             </div>
           </div>
@@ -165,27 +170,28 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
       )}
 
       {/* Stopping Criteria & Tolerance Grid */}
-      <div className="pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="pt-2 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {/* Tolerance */}
         <div>
           <label className="text-xs font-semibold text-slate-800 block mb-1">
             دقت همگرایی (ε)
           </label>
           <input
-            type="number"
-            step="any"
-            value={tolerance}
-            onChange={(e) => setTolerance(parseFloat(e.target.value) || 1e-6)}
-            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+            type="text"
+                dir="ltr"
+            aria-label="تلورانس"
+                value={tolerance}
+            onChange={(e) => setTolerance(e.target.value)}
+            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
           />
-          <div className="flex gap-1 mt-1 text-[10px]">
+          <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
             {[1e-3, 1e-6, 1e-8, 1e-12].map((tol) => (
               <button
                 key={tol}
                 type="button"
-                onClick={() => setTolerance(tol)}
-                className={`px-1.5 py-0.5 rounded font-mono transition-colors cursor-pointer ${
-                  tolerance === tol ? 'bg-sky-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                onClick={() => setTolerance(String(tol))}
+                className={`min-h-8 px-1.5 py-0.5 rounded font-mono sm:min-h-0 transition-colors cursor-pointer ${
+                  Number(tolerance) === tol ? 'bg-sky-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                 }`}
               >
                 10^{Math.round(Math.log10(tol))}
@@ -200,12 +206,12 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
             سقف تکرار (N_max)
           </label>
           <input
-            type="number"
-            min={1}
-            max={500}
-            value={maxIterations}
-            onChange={(e) => setMaxIterations(parseInt(e.target.value, 10) || 50)}
-            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+            type="text"
+                dir="ltr"
+            aria-label="سقف تکرار"
+                value={maxIterations}
+            onChange={(e) => setMaxIterations(e.target.value)}
+            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
           />
           <span className="text-[10px] text-slate-400 mt-1 block">
             جلوگیری از حلقه بی‌نهایت در صورت واگرایی
@@ -213,16 +219,16 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
         </div>
 
         {/* Stopping Criterion */}
-        <div>
+        <div className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1">
           <label className="text-xs font-semibold text-slate-800 block mb-1">
             معیار توقف الگوریتم
           </label>
           <select
             value={stoppingCriterion}
             onChange={(e) => setStoppingCriterion(e.target.value as StoppingCriterion)}
-            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500 cursor-pointer"
+            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500 cursor-pointer"
           >
-            <option value="absolute_error">خطای مطلق |xₖ - xₖ₋₁| &lt; ε</option>
+            <option value="absolute_error">خطای مطلق {method === 'bisection' ? '(b − a) / 2' : '|Δx|'} &lt; ε</option>
             <option value="relative_error">خطای نسبی |Δx| / |x| &lt; ε</option>
             <option value="residual">باقیمانده تابع |f(x)| &lt; ε</option>
             <option value="combined">ترکیب خطا و باقیمانده تابع</option>

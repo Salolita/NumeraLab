@@ -28,6 +28,7 @@ export interface NewtonIteration {
   xnNext: number;
   absError: number;
   relError: number;
+  nextResidual?: number;
 }
 
 export interface SecantIteration {
@@ -39,6 +40,7 @@ export interface SecantIteration {
   xNext: number; // x_{k+1}
   absError: number;
   relError: number;
+  nextResidual?: number;
 }
 
 export interface FalsePositionIteration {

@@ -7,8 +7,11 @@ interface FunctionPlotProps {
   expression: string;
   result: SolverResult | null;
   method: MethodType;
-  defaultA?: number;
-  defaultB?: number;
+  initial?: number[];
+  activeStep: number;
+  onStepChange: (step: number) => void;
+  isPlaying: boolean;
+  onPlayChange: (playing: boolean) => void;
 }
 
 export const FunctionPlot: React.FC<FunctionPlotProps> = ({
@@ -16,10 +19,9 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
   expression,
   result,
   method,
-  defaultA = 0,
-  defaultB = 2,
+  initial, activeStep, onStepChange, isPlaying, onPlayChange,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({ width: 680, height: 380 });
   const [viewRange, setViewRange] = useState<{ xMin: number; xMax: number; yMin: number; yMax: number }>({
     xMin: -1,
@@ -28,99 +30,62 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
     yMax: 6,
   });
 
-  const [activeStepIndex, setActiveStepIndex] = useState<number>(-1);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const lastStep = result?.iterations.at(-1)?.step ?? 0;
+  const selectStep = (step: number) => {
+    onPlayChange(false);
+    onStepChange(step);
+  };
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number; px: number; py: number } | null>(null);
 
-  // Resize listener
   useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+
     const updateSize = () => {
-      if (containerRef.current) {
-        const w = containerRef.current.clientWidth;
-        setDimensions({
-          width: Math.max(320, w),
-          height: Math.min(420, Math.max(300, Math.floor(w * 0.55))),
-        });
-      }
+      const { width, height } = plot.getBoundingClientRect();
+      if (width > 0 && height > 0) setDimensions({ width, height });
     };
+
     updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(plot);
+    return () => observer.disconnect();
   }, []);
 
-  // Automatically adapt viewRange when result or defaults change
-  useEffect(() => {
-    if (result && result.root !== null) {
-      const root = result.root;
-      let minX = root - 1.5;
-      let maxX = root + 1.5;
-
-      if (result.iterations.length > 0) {
-        const xVals: number[] = [];
-        result.iterations.forEach((it: any) => {
-          if (it.a !== undefined) xVals.push(it.a, it.b, it.c);
-          if (it.xn !== undefined) xVals.push(it.xn, it.xnNext);
-          if (it.xCurr !== undefined) xVals.push(it.xPrev, it.xCurr, it.xNext);
-        });
-        if (xVals.length > 0) {
-          const actualMin = Math.min(...xVals.filter(Number.isFinite));
-          const actualMax = Math.max(...xVals.filter(Number.isFinite));
-          const padding = Math.max(0.5, (actualMax - actualMin) * 0.3);
-          minX = actualMin - padding;
-          maxX = actualMax + padding;
-        }
-      }
-
-      // Sample y values to scale yMin/yMax
-      if (fn) {
-        const samples: number[] = [];
-        const step = (maxX - minX) / 30;
-        for (let x = minX; x <= maxX; x += step) {
-          try {
-            const y = fn(x);
-            if (Number.isFinite(y) && Math.abs(y) < 100) samples.push(y);
-          } catch {}
-        }
-        if (samples.length > 0) {
-          const minY = Math.min(...samples);
-          const maxY = Math.max(...samples);
-          const yPadding = Math.max(1, (maxY - minY) * 0.25);
-          setViewRange({
-            xMin: minX,
-            xMax: maxX,
-            yMin: Math.max(-100, minY - yPadding),
-            yMax: Math.min(100, maxY + yPadding),
-          });
-        } else {
-          setViewRange({ xMin: minX, xMax: maxX, yMin: -5, yMax: 5 });
-        }
-      }
-      setActiveStepIndex(result.iterations.length - 1);
-    } else {
-      // Default range
-      const minX = Math.min(defaultA, defaultB) - 1;
-      const maxX = Math.max(defaultA, defaultB) + 1;
-      setViewRange({ xMin: minX, xMax: maxX, yMin: -5, yMax: 5 });
-      setActiveStepIndex(-1);
+  const initialView = useMemo(() => {
+    const points = [...(initial ?? [0, 2])];
+    for (const row of result?.iterations ?? []) {
+      if ('a' in row) points.push(row.a, row.b, row.c);
+      else if ('xn' in row) points.push(row.xn, row.xnNext);
+      else points.push(row.xPrev, row.xCurr, row.xNext);
     }
-  }, [result, defaultA, defaultB, fn]);
-
-  // Animation player
-  useEffect(() => {
-    let timer: any;
-    if (isPlaying && result && result.iterations.length > 0) {
-      timer = setInterval(() => {
-        setActiveStepIndex((prev) => {
-          if (prev >= result.iterations.length - 1) {
-            setIsPlaying(false);
-            return result.iterations.length - 1;
-          }
-          return prev + 1;
-        });
-      }, 900);
+    if (result?.root != null) points.push(result.root);
+    const finite = points.filter(Number.isFinite);
+    const left = Math.min(...finite);
+    const right = Math.max(...finite);
+    const padding = Math.max(0.5, (right - left) * 0.3, Math.abs(left) * 1e-12, Math.abs(right) * 1e-12);
+    const xMin = left - padding;
+    const xMax = right + padding;
+    if (!Number.isFinite(xMax - xMin)) return { xMin: -2, xMax: 4, yMin: -5, yMax: 5 };
+    const samples: number[] = [0];
+    if (fn) for (let index = 0; index <= 30; index += 1) {
+      try {
+        const value = fn(xMin + (xMax - xMin) * (index / 30));
+        if (Math.abs(value) < 100) samples.push(value);
+      } catch {
+        // The curve can have gaps outside the real domain of the function.
+      }
     }
-    return () => clearInterval(timer);
-  }, [isPlaying, result]);
+    const bottom = Math.min(...samples);
+    const top = Math.max(...samples);
+    const margin = Math.max(1, (top - bottom) * 0.25);
+    return { xMin, xMax, yMin: bottom - margin, yMax: top + margin };
+  }, [result, initial, fn]);
+
+  useEffect(() => {
+    setViewRange(initialView);
+    setHoverCoord(null);
+  }, [initialView]);
 
   // Coordinate mapping
   const toSvgX = (x: number) => {
@@ -141,6 +106,8 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
     const yMid = (viewRange.yMin + viewRange.yMax) / 2;
     const xHalf = ((viewRange.xMax - viewRange.xMin) * factor) / 2;
     const yHalf = ((viewRange.yMax - viewRange.yMin) * factor) / 2;
+    if (!Number.isFinite(xHalf) || !Number.isFinite(yHalf) ||
+      xMid - xHalf >= xMid + xHalf || yMid - yHalf >= yMid + yHalf) return;
     setViewRange({
       xMin: xMid - xHalf,
       xMax: xMid + xHalf,
@@ -149,18 +116,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
     });
   };
 
-  const resetView = () => {
-    if (result && result.root !== null) {
-      setViewRange({
-        xMin: result.root - 2,
-        xMax: result.root + 2,
-        yMin: -5,
-        yMax: 5,
-      });
-    } else {
-      setViewRange({ xMin: -2, xMax: 4, yMin: -5, yMax: 6 });
-    }
-  };
+  const resetView = () => setViewRange(initialView);
 
   // Generate SVG path for f(x)
   const curvePath = useMemo(() => {
@@ -205,7 +161,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
     const span = viewRange.xMax - viewRange.xMin;
     const step = Math.pow(10, Math.floor(Math.log10(span))) / (span / Math.pow(10, Math.floor(Math.log10(span))) < 3 ? 2 : 1);
     const start = Math.ceil(viewRange.xMin / step) * step;
-    for (let x = start; x <= viewRange.xMax; x += step) {
+    for (let x = start; x <= viewRange.xMax && ticks.length < 24; x += step) {
       ticks.push(x);
     }
     return ticks;
@@ -216,16 +172,14 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
     const span = viewRange.yMax - viewRange.yMin;
     const step = Math.pow(10, Math.floor(Math.log10(span))) / (span / Math.pow(10, Math.floor(Math.log10(span))) < 3 ? 2 : 1);
     const start = Math.ceil(viewRange.yMin / step) * step;
-    for (let y = start; y <= viewRange.yMax; y += step) {
+    for (let y = start; y <= viewRange.yMax && ticks.length < 24; y += step) {
       ticks.push(y);
     }
     return ticks;
   }, [viewRange]);
 
   // Current iteration step details
-  const currentStep = result && activeStepIndex >= 0 && activeStepIndex < result.iterations.length
-    ? result.iterations[activeStepIndex]
-    : null;
+  const currentStep = activeStep > 0 ? result?.iterations[activeStep - 1] : null;
 
   // Handle mouse hover over canvas
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -245,14 +199,14 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="@container min-w-0 space-y-3">
       {/* Chart Top Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-slate-800">
             نمودار هندسی تابع و تجسم مراحل همگرایی
           </span>
-          <span className="text-[11px] font-mono text-sky-700 bg-sky-50 px-2 py-0.5 rounded" dir="ltr">
+          <span className="text-[11px] font-mono text-sky-700 bg-sky-50 wrap-anywhere px-2 py-0.5 rounded" dir="ltr">
             y = {expression}
           </span>
         </div>
@@ -261,7 +215,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           <button
             type="button"
             onClick={() => handleZoom(0.75)}
-            className="p-1.5 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
+            className="inline-flex size-11 items-center justify-center p-1.5 text-slate-600 hover:text-slate-900 bg-white sm:pointer-fine:size-auto border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
             title="بزرگ‌نمایی (Zoom In)"
           >
             <ZoomIn className="w-3.5 h-3.5" />
@@ -269,7 +223,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           <button
             type="button"
             onClick={() => handleZoom(1.33)}
-            className="p-1.5 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
+            className="inline-flex size-11 items-center justify-center p-1.5 text-slate-600 hover:text-slate-900 bg-white sm:pointer-fine:size-auto border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
             title="کوچک‌نمایی (Zoom Out)"
           >
             <ZoomOut className="w-3.5 h-3.5" />
@@ -277,7 +231,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           <button
             type="button"
             onClick={resetView}
-            className="p-1.5 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
+            className="inline-flex size-11 items-center justify-center p-1.5 text-slate-600 hover:text-slate-900 bg-white sm:pointer-fine:size-auto border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
             title="بازنشانی کادر"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -287,19 +241,17 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
 
       {/* SVG Plot Canvas */}
       <div
-        ref={containerRef}
-        className="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner select-none"
-        style={{ height: dimensions.height }}
+        className="relative h-[clamp(240px,55cqw,420px)] bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner select-none md:h-[clamp(300px,55cqw,420px)]"
       >
         <svg
-          width={dimensions.width}
-          height={dimensions.height}
+          ref={plotRef}
+          direction="ltr"
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverCoord(null)}
-          className="w-full h-full cursor-crosshair"
+          className="block w-full h-full cursor-crosshair"
         >
           {/* Grid lines */}
-          <g stroke="#1e293b" strokeWidth="1" strokeDasharray="2,3">
+          <g stroke="#392954" strokeWidth="1" strokeDasharray="2,3">
             {xTicks.map((x) => {
               const sx = toSvgX(x);
               return <line key={`gx-${x}`} x1={sx} y1={0} x2={sx} y2={dimensions.height} />;
@@ -317,7 +269,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
             y1={toSvgY(0)}
             x2={dimensions.width}
             y2={toSvgY(0)}
-            stroke="#475569"
+            stroke="#715b92"
             strokeWidth="1.5"
           />
           {/* Y-Axis (x = 0) */}
@@ -326,7 +278,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
             y1={0}
             x2={toSvgX(0)}
             y2={dimensions.height}
-            stroke="#475569"
+            stroke="#715b92"
             strokeWidth="1.5"
           />
 
@@ -334,17 +286,19 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           {xTicks.map((x) => {
             const sx = toSvgX(x);
             const sy = Math.min(dimensions.height - 8, Math.max(16, toSvgY(0) + 14));
+            const label = Math.abs(x) < 1e-12 ? '0' : String(Number(x.toFixed(2)));
+            const labelPadding = label.length * 3 + 3;
             return (
               <text
                 key={`tx-${x}`}
-                x={sx}
+                x={Math.max(labelPadding, Math.min(dimensions.width - labelPadding, sx))}
                 y={sy}
-                fill="#94a3b8"
+                fill="#b9a8ce"
                 fontSize="10"
                 fontFamily="JetBrains Mono, monospace"
                 textAnchor="middle"
               >
-                {Math.abs(x) < 1e-12 ? '0' : Number(x.toFixed(2))}
+                {label}
               </text>
             );
           })}
@@ -357,8 +311,8 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
               <text
                 key={`ty-${y}`}
                 x={sx}
-                y={sy + 3}
-                fill="#64748b"
+                y={Math.max(12, Math.min(dimensions.height - 4, sy + 3))}
+                fill="#b9a8ce"
                 fontSize="10"
                 fontFamily="JetBrains Mono, monospace"
                 textAnchor="start"
@@ -369,6 +323,12 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           })}
 
           {/* Iteration Geometry Visualizations */}
+          {activeStep === 0 && initial?.map((x, index) => (
+            <g key={index} className="plot-initial">
+              <line x1={toSvgX(x)} x2={toSvgX(x)} y1={0} y2={dimensions.height} stroke="currentColor" strokeDasharray="5 5" />
+              <circle cx={toSvgX(x)} cy={toSvgY(0)} r={4} fill="currentColor" />
+            </g>
+          ))}
           {currentStep && (
             <g>
               {/* 1. Bisection: Bracket region [a, b] & midpoint c */}
@@ -379,7 +339,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     y={0}
                     width={Math.max(1, toSvgX(currentStep.b) - toSvgX(currentStep.a))}
                     height={dimensions.height}
-                    fill="rgba(14, 165, 233, 0.12)"
+                    fill="rgba(158, 107, 255, 0.16)"
                     stroke="rgba(14, 165, 233, 0.4)"
                     strokeWidth="1"
                     strokeDasharray="4,3"
@@ -390,7 +350,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     y1={toSvgY(0)}
                     x2={toSvgX(currentStep.c)}
                     y2={toSvgY(currentStep.fc)}
-                    stroke="#38bdf8"
+                    stroke="#c0a4ff"
                     strokeWidth="2"
                     strokeDasharray="2,2"
                   />
@@ -398,7 +358,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     cx={toSvgX(currentStep.c)}
                     cy={toSvgY(currentStep.fc)}
                     r="5"
-                    fill="#38bdf8"
+                    fill="#c0a4ff"
                   />
                 </>
               )}
@@ -435,7 +395,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     cx={toSvgX(currentStep.xnNext)}
                     cy={toSvgY(0)}
                     r="4"
-                    fill="#38bdf8"
+                    fill="#c0a4ff"
                   />
                 </>
               )}
@@ -467,7 +427,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     cx={toSvgX(currentStep.xNext)}
                     cy={toSvgY(0)}
                     r="4"
-                    fill="#38bdf8"
+                    fill="#c0a4ff"
                   />
                 </>
               )}
@@ -499,7 +459,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     cx={toSvgX(currentStep.c)}
                     cy={toSvgY(0)}
                     r="5"
-                    fill="#38bdf8"
+                    fill="#c0a4ff"
                   />
                 </>
               )}
@@ -511,7 +471,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
             <path
               d={curvePath}
               fill="none"
-              stroke="#38bdf8"
+              stroke="#c0a4ff"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -559,7 +519,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                 height="24"
                 rx="4"
                 fill="rgba(15, 23, 42, 0.9)"
-                stroke="#475569"
+                stroke="#715b92"
               />
               <text
                 x={Math.min(dimensions.width - 70, Math.max(70, hoverCoord.px))}
@@ -576,7 +536,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
         </svg>
 
         {/* Legend */}
-        <div className="absolute top-2.5 right-2.5 bg-slate-900/80 backdrop-blur-xs border border-slate-700/80 rounded-md px-2.5 py-1.5 text-[11px] text-slate-300 flex items-center gap-3">
+        <div className="absolute top-2.5 right-2.5 max-w-[calc(100%-1.25rem)] bg-slate-900/80 backdrop-blur-xs border border-slate-700/80 rounded-md px-2.5 py-1.5 text-[11px] text-slate-300 flex flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 bg-sky-400 inline-block rounded"></span>
             <span>منحنی f(x)</span>
@@ -591,13 +551,17 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
       </div>
 
       {/* Step by Step Playback Controller */}
-      {result && result.iterations.length > 0 && (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
+      {result && (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs sm:gap-y-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:w-auto sm:justify-start sm:gap-2">
             <button
               type="button"
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="p-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-md transition-all cursor-pointer flex items-center gap-1"
+              disabled={lastStep === 0}
+              onClick={() => {
+                if (!isPlaying && activeStep === lastStep) onStepChange(0);
+                onPlayChange(!isPlaying);
+              }}
+              className="min-h-11 px-2 py-1.5 sm:pointer-fine:min-h-0 sm:pointer-fine:px-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-md transition-all cursor-pointer flex items-center gap-1"
               title={isPlaying ? 'توقف پخش' : 'پخش خودکار مراحل'}
             >
               {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -606,38 +570,43 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
 
             <button
               type="button"
-              disabled={activeStepIndex <= 0}
-              onClick={() => setActiveStepIndex((prev) => Math.max(0, prev - 1))}
-              className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-md cursor-pointer"
+              disabled={activeStep === 0}
+              onClick={() => selectStep(activeStep - 1)}
+              className="inline-flex size-11 items-center justify-center p-1.5 sm:pointer-fine:size-auto bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-md cursor-pointer"
               title="گام قبلی"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
 
             <span className="font-mono text-slate-700 px-1 font-semibold">
-              گام {activeStepIndex + 1} از {result.iterations.length}
+              گام {activeStep} از {lastStep}
             </span>
 
             <button
               type="button"
-              disabled={activeStepIndex >= result.iterations.length - 1}
-              onClick={() => setActiveStepIndex((prev) => Math.min(result.iterations.length - 1, prev + 1))}
-              className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-md cursor-pointer"
+              disabled={activeStep >= lastStep}
+              onClick={() => selectStep(activeStep + 1)}
+              className="inline-flex size-11 items-center justify-center p-1.5 sm:pointer-fine:size-auto bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-md cursor-pointer"
               title="گام بعدی"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
           </div>
 
+          <button type="button" onClick={() => selectStep(0)} className="min-h-10 rounded-md px-2 text-sky-800" title="بازگشت به گام صفر">
+            <RotateCcw className="inline size-4" /> شروع مجدد
+          </button>
           {/* Slider */}
-          <div className="flex-1 max-w-xs flex items-center gap-2">
+          <div className="w-full min-w-20 flex items-center gap-2 sm:max-w-xs sm:flex-1">
             <input
               type="range"
               min="0"
-              max={result.iterations.length - 1}
-              value={activeStepIndex}
-              onChange={(e) => setActiveStepIndex(parseInt(e.target.value, 10))}
-              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
+              max={lastStep}
+              disabled={lastStep === 0}
+              value={activeStep}
+              onChange={(e) => selectStep(Number(e.target.value))}
+              aria-label="انتخاب گام نمودار"
+              className="w-full h-10 rounded-lg cursor-pointer accent-sky-600 sm:pointer-fine:h-1.5 sm:pointer-fine:appearance-none sm:pointer-fine:bg-slate-200"
             />
           </div>
 

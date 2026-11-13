@@ -14,7 +14,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({
 }) => {
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-xs font-semibold text-slate-800">
           مسائل مرجع استاندارد دانشگاهی
         </span>
@@ -31,7 +31,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectPreset(item)}
-              className={`p-3 rounded-lg border text-right transition-all cursor-pointer flex flex-col justify-between ${
+              className={`min-w-0 p-3 rounded-lg border text-right transition-all cursor-pointer flex flex-col justify-between ${
                 isActive
                   ? 'border-sky-500 bg-sky-50/70 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
@@ -39,17 +39,17 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({
             >
               <div>
                 <div className="text-xs font-bold text-slate-900 mb-1">{item.title}</div>
-                <div className="font-mono text-xs text-sky-700 mb-1" dir="ltr">
+                <div className="font-mono text-xs text-sky-700 mb-1 wrap-anywhere" dir="ltr">
                   f(x) = {item.expression}
                 </div>
-                <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                <p className="text-sm text-slate-500 leading-relaxed sm:line-clamp-2 sm:text-[11px]">
                   {item.description}
                 </p>
               </div>
 
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
+              <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-slate-600">
                 <span>ریشه معلوم: <strong className="font-mono text-slate-800">{item.knownRoot.toFixed(6)}</strong></span>
-                <span className="text-sky-600 flex items-center gap-0.5 font-medium">
+                <span className="text-sky-600 inline-flex min-h-10 items-center gap-0.5 sm:min-h-0 font-medium">
                   انتخاب <ArrowLeft className="w-3 h-3" />
                 </span>
               </div>

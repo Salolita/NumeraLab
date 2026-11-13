@@ -5,9 +5,10 @@ import { Download, Copy, Check, Table } from 'lucide-react';
 interface IterationTableProps {
   result: SolverResult | null;
   decimalPlaces: number;
+  activeStep: number;
 }
 
-export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalPlaces }) => {
+export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalPlaces, activeStep }) => {
   const [copied, setCopied] = React.useState(false);
 
   if (!result || result.iterations.length === 0) {
@@ -109,18 +110,18 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between pb-1">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-xs font-bold text-slate-800">جدول مراحل تکرار (Iteration Table)</span>
           <span className="text-[11px] text-slate-500">
             {iterations.length} سطر محاسبه‌شده
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={copyAsText}
-            className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+            className="min-h-11 px-2.5 py-1 text-xs sm:min-h-0 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'کپی شد' : 'کپی خلاصه'}</span>
@@ -128,7 +129,7 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
           <button
             type="button"
             onClick={exportCsv}
-            className="px-2.5 py-1 text-xs text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-md transition-colors flex items-center gap-1 cursor-pointer font-medium"
+            className="min-h-11 px-2.5 py-1 text-xs sm:min-h-0 text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-md transition-colors flex items-center gap-1 cursor-pointer font-medium"
           >
             <Download className="w-3.5 h-3.5" />
             <span>خروجی اکسل (CSV)</span>
@@ -136,7 +137,13 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-[460px]">
+      <p className="text-xs text-slate-500 lg:hidden">برای دیدن ستون‌های دیگر، داخل جدول به‌صورت افقی پیمایش کنید.</p>
+      <div
+        role="region"
+        aria-label="جدول مراحل تکرار"
+        tabIndex={0}
+        className="max-h-[min(55svh,460px)] min-w-0 overflow-auto rounded-xl border border-slate-200 bg-white shadow-xs focus-visible:outline-2 focus-visible:outline-sky-500 lg:max-h-[460px]"
+      >
         <table className="w-full text-xs text-right whitespace-nowrap">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0 z-10">
             {method === 'bisection' && (
@@ -198,7 +205,7 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
               (iterations as BisectionIteration[]).map((row, idx) => {
                 const isLast = idx === iterations.length - 1 && result.status === 'converged';
                 return (
-                  <tr key={row.step} className={isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
+                  <tr key={row.step} aria-current={row.step === activeStep ? 'step' : undefined} className={row.step === activeStep ? 'active-iteration' : isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
                     <td className="py-2 px-3 text-slate-500 font-sans">{row.step}</td>
                     <td className="py-2 px-3">{formatNumber(row.a)}</td>
                     <td className="py-2 px-3">{formatNumber(row.b)}</td>
@@ -216,7 +223,7 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
               (iterations as NewtonIteration[]).map((row, idx) => {
                 const isLast = idx === iterations.length - 1 && result.status === 'converged';
                 return (
-                  <tr key={row.step} className={isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
+                  <tr key={row.step} aria-current={row.step === activeStep ? 'step' : undefined} className={row.step === activeStep ? 'active-iteration' : isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
                     <td className="py-2 px-3 text-slate-500 font-sans">{row.step}</td>
                     <td className="py-2 px-3">{formatNumber(row.xn)}</td>
                     <td className="py-2 px-3">{formatNumber(row.fxn)}</td>
@@ -232,7 +239,7 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
               (iterations as SecantIteration[]).map((row, idx) => {
                 const isLast = idx === iterations.length - 1 && result.status === 'converged';
                 return (
-                  <tr key={row.step} className={isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
+                  <tr key={row.step} aria-current={row.step === activeStep ? 'step' : undefined} className={row.step === activeStep ? 'active-iteration' : isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
                     <td className="py-2 px-3 text-slate-500 font-sans">{row.step}</td>
                     <td className="py-2 px-3">{formatNumber(row.xPrev)}</td>
                     <td className="py-2 px-3">{formatNumber(row.xCurr)}</td>
@@ -249,7 +256,7 @@ export const IterationTable: React.FC<IterationTableProps> = ({ result, decimalP
               (iterations as FalsePositionIteration[]).map((row, idx) => {
                 const isLast = idx === iterations.length - 1 && result.status === 'converged';
                 return (
-                  <tr key={row.step} className={isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
+                  <tr key={row.step} aria-current={row.step === activeStep ? 'step' : undefined} className={row.step === activeStep ? 'active-iteration' : isLast ? 'bg-emerald-50/50 font-semibold text-emerald-950' : 'hover:bg-slate-50/80'}>
                     <td className="py-2 px-3 text-slate-500 font-sans">{row.step}</td>
                     <td className="py-2 px-3">{formatNumber(row.a)}</td>
                     <td className="py-2 px-3">{formatNumber(row.b)}</td>

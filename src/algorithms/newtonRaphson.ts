@@ -107,7 +107,7 @@ export function solveNewtonRaphson({ fn, dfn, x0, options }: NewtonRaphsonParams
     const absError = Math.abs(xNext - xCurr);
     const relError = Math.abs(xNext) > 1e-14 ? absError / Math.abs(xNext) : absError;
 
-    iterations.push({
+    const iteration: NewtonIteration = {
       step: k,
       xn: xCurr,
       fxn: fx,
@@ -115,13 +115,27 @@ export function solveNewtonRaphson({ fn, dfn, x0, options }: NewtonRaphsonParams
       xnNext: xNext,
       absError,
       relError,
-    });
+    };
+    iterations.push(iteration);
 
     let nextFx = 0;
     try {
       nextFx = fn(xNext);
-    } catch {
-      nextFx = fx; // fallback
+      if (!Number.isFinite(nextFx)) throw new Error('مقدار تابع متناهی نیست.');
+      iteration.nextResidual = Math.abs(nextFx);
+    } catch (error) {
+      return {
+        method: 'newton',
+        status: 'nan_encountered',
+        statusMessage: `مقدار تابع در تقریب بعدی ${xNext} معتبر نیست. ${error instanceof Error ? error.message : ''}`,
+        root: null,
+        residual: null,
+        iterationsCount: iterations.length,
+        executionTimeMs: performance.now() - startTime,
+        iterations,
+        stoppingCriterionUsed: stoppingCriterion,
+        toleranceUsed: tolerance,
+      };
     }
 
     // Check stopping criteria

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertCircle, Check, Sparkles } from 'lucide-react';
-import { getSymbolicDerivative } from '../utils/mathParser';
+import { expressionMathML, getSymbolicDerivative } from '../utils/mathParser';
 
 interface MathInputProps {
   expression: string;
@@ -23,12 +23,28 @@ export const MathInput: React.FC<MathInputProps> = ({
   setUseCustomDerivative,
   showDerivativeSection,
 }) => {
+  const input = React.useRef<HTMLInputElement>(null);
+  const preview = React.useMemo(() => {
+    if (syntaxError) return null;
+    try {
+      return expressionMathML(expression);
+    } catch {
+      return null;
+    }
+  }, [expression, syntaxError]);
   const { derivativeExpr } = React.useMemo(() => {
-    return getSymbolicDerivative(expression);
-  }, [expression]);
+    return showDerivativeSection ? getSymbolicDerivative(expression) : { derivativeExpr: null };
+  }, [expression, showDerivativeSection]);
 
   const insertSymbol = (sym: string) => {
-    setExpression(expression + sym);
+    const field = input.current;
+    const start = field?.selectionStart ?? expression.length;
+    const end = field?.selectionEnd ?? start;
+    setExpression(expression.slice(0, start) + sym + expression.slice(end));
+    requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(start + sym.length, start + sym.length);
+    });
   };
 
   const quickButtons = [
@@ -49,15 +65,16 @@ export const MathInput: React.FC<MathInputProps> = ({
     { label: '÷', value: ' / ' },
     { label: '^', value: '^' },
     { label: '( )', value: '()' },
+    { label: 'کسر', value: '()/()' },
   ];
 
   return (
     <div className="space-y-4">
       <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1.5">
+          <label htmlFor="function-expression" className="text-sm font-semibold text-slate-800 flex flex-wrap items-center gap-x-1.5">
             <span>تابع غیرخطی f(x)</span>
-            <span className="text-xs font-normal text-slate-500">(معادله را به فرم ۰ = f(x) بنویسید)</span>
+            <span className="text-xs font-normal text-slate-500">(تابع یا معادله)</span>
           </label>
           <div className="text-xs text-slate-500 flex items-center gap-2">
             {!syntaxError && expression.trim() && (
@@ -74,18 +91,27 @@ export const MathInput: React.FC<MathInputProps> = ({
             f(x) =
           </div>
           <input
+            id="function-expression"
+            ref={input}
             type="text"
             dir="ltr"
             value={expression}
             onChange={(e) => setExpression(e.target.value)}
-            placeholder="مثال: x^3 - x - 2  یا  cos(x) - x"
-            className={`w-full pr-16 pl-4 py-2.5 bg-white border rounded-lg text-slate-900 font-mono text-sm tracking-wide focus:outline-none focus:ring-2 transition-all ${
+            placeholder="مثال: x³ − x = ۲"
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={Boolean(syntaxError)}
+            className={`w-full pr-16 pl-4 py-2.5 bg-white border rounded-lg text-slate-900 font-mono text-base tracking-wide sm:text-sm focus:outline-none focus:ring-2 transition-all ${
               syntaxError
                 ? 'border-rose-400 focus:ring-rose-200'
                 : 'border-slate-300 focus:border-sky-500 focus:ring-sky-100'
             }`}
           />
         </div>
+        {preview && (
+          <div className="formula-preview mt-2 rounded-lg bg-slate-50" dir="ltr" aria-label="پیش‌نمایش تابعی که حل می‌شود"
+            dangerouslySetInnerHTML={{ __html: '<math><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo>' + preview + '</math>' }} />
+        )}
 
         {/* Error Message */}
         {syntaxError && (
@@ -98,7 +124,7 @@ export const MathInput: React.FC<MathInputProps> = ({
 
       {/* Quick Insert Keypad */}
       <div>
-        <div className="text-xs text-slate-500 mb-1.5 flex items-center justify-between">
+        <div className="text-xs text-slate-500 mb-1.5 flex flex-wrap items-center justify-between gap-x-2">
           <span>درج سریع توابع و نمادها:</span>
           <span className="text-[11px] text-slate-400">بدون نیاز به کدنویسی</span>
         </div>
@@ -108,7 +134,7 @@ export const MathInput: React.FC<MathInputProps> = ({
               key={btn.label}
               type="button"
               onClick={() => insertSymbol(btn.value)}
-              className="px-2.5 py-1 text-xs font-mono bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded transition-colors cursor-pointer"
+              className="min-h-10 px-2.5 py-1 text-xs sm:min-h-0 font-mono bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded transition-colors cursor-pointer"
             >
               {btn.label}
             </button>
@@ -116,7 +142,7 @@ export const MathInput: React.FC<MathInputProps> = ({
           <button
             type="button"
             onClick={() => setExpression('')}
-            className="px-2.5 py-1 text-xs font-sans text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer mr-auto"
+            className="min-h-10 px-2.5 py-1 text-xs sm:min-h-0 font-sans text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer mr-auto"
           >
             پاک کردن
           </button>
@@ -126,12 +152,12 @@ export const MathInput: React.FC<MathInputProps> = ({
       {/* Derivative Section (especially relevant for Newton-Raphson) */}
       {showDerivativeSection && (
         <div className="pt-2 border-t border-slate-200/80">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 mb-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-xs font-semibold text-slate-800">مشتق تابع f'(x)</span>
               <span className="text-[11px] text-slate-500">(موردنیاز روش نیوتون–رافسون)</span>
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+            <label className="flex min-h-10 items-center gap-1.5 text-xs text-slate-600 cursor-pointer sm:min-h-0">
               <input
                 type="checkbox"
                 checked={useCustomDerivative}
@@ -143,10 +169,10 @@ export const MathInput: React.FC<MathInputProps> = ({
           </div>
 
           {!useCustomDerivative ? (
-            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-slate-500 italic">f'(x) =</span>
-                <span className="text-slate-800 font-semibold text-left" dir="ltr">
+                <span className="text-slate-800 font-semibold text-left wrap-anywhere" dir="ltr">
                   {derivativeExpr || 'محاسبه عددی پیوسته تفاضل مرکزی (Central Difference)'}
                 </span>
               </div>
@@ -164,7 +190,7 @@ export const MathInput: React.FC<MathInputProps> = ({
                 value={customDerivative}
                 onChange={(e) => setCustomDerivative(e.target.value)}
                 placeholder="فرمول مشتق را وارد کنید، مثلاً: 3*x^2 - 1"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
               />
             </div>
           )}

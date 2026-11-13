@@ -1,32 +1,65 @@
 import React from 'react';
 import { BookOpen, Check, AlertTriangle, Layers, Compass } from 'lucide-react';
 
+const examples = [
+  {
+    title: 'دونیم‌سازی',
+    usage: 'وقتی تابع روی بازه پیوسته است و مقدار تابع در دو سر بازه علامت مخالف دارد، نقطهٔ میانی بازه را حساب کن و نیمه‌ای را نگه دار که تغییر علامت دارد.',
+    math: '<mi>c</mi><mo>=</mo><mfrac><mrow><mi>a</mi><mo>+</mo><mi>b</mi></mrow><mn>2</mn></mfrac>',
+    example: 'برای معادلهٔ x³ − x − 2 = 0 روی بازهٔ [1, 2]، نقطهٔ میانی 1.5 است. مقدار تابع در آن −0.125 و در 2 مثبت است. بازهٔ بعدی [1.5, 2] می‌شود.',
+  },
+  {
+    title: 'نیوتن‌رافسون',
+    usage: 'وقتی مشتق در دسترس است، از یک حدس نزدیک به ریشه شروع کن. خط مماس تابع در حدس فعلی، محور افقی را در تقریب بعدی قطع می‌کند. مشتق صفر یا بسیار کوچک می‌تواند مانع ادامه شود.',
+    math: '<msub><mi>x</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo><msub><mi>x</mi><mi>k</mi></msub><mo>−</mo><mfrac><mrow><mi>f</mi><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo></mrow><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo></mrow></mfrac>',
+    example: 'برای همان تابع، اگر حدس اولیه 1.5 باشد، مقدار تابع −0.125 و مشتق 5.75 است. با جایگذاری در فرمول، تقریب بعدی حدود 1.521739 می‌شود.',
+  },
+];
+
 export const EducationalGuide: React.FC = () => {
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-4 sm:space-y-6 max-w-4xl mx-auto">
       {/* Title */}
-      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
+      <div className="p-3.5 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
         <div className="flex items-center gap-2 mb-2">
-          <BookOpen className="w-5 h-5 text-sky-600" />
+          <BookOpen className="w-5 h-5 shrink-0 text-sky-600" />
           <h2 className="text-base font-bold text-slate-900">
             راهنمای علمی و تئوری محاسبات عددی
           </h2>
         </div>
-        <p className="text-xs text-slate-600 leading-relaxed">
-          مرجع آموزشی و علمی مبانی حل معادلات غیرخطی تک‌متغیره f(x) = 0، تحلیل مرتبه همگرایی، معیارهای توقف و شرایط شکست الگوریتم‌ها بر اساس استانداردهای دانشگاهی.
+        <p className="text-sm sm:text-xs text-slate-600 leading-relaxed">
+          در ریشه‌یابی دنبال عددی هستیم که مقدار تابع در آن صفر شود. هر روش راه متفاوتی برای پیدا کردن تقریب بعدی دارد.
         </p>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        {examples.map((example) => (
+          <article key={example.title} className="solver-panel space-y-3 p-4 sm:p-5">
+            <h3 className="font-bold">{example.title}</h3>
+            <p className="text-sm leading-7 text-slate-600">{example.usage}</p>
+            <div className="formula-preview rounded-lg bg-slate-50" dir="ltr"
+              dangerouslySetInnerHTML={{ __html: '<math>' + example.math + '</math>' }} />
+            <p className="text-sm leading-7 text-slate-600">{example.example}</p>
+          </article>
+        ))}
+      </div>
+
       {/* Comparison Table of Convergence Orders */}
-      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+      <div className="p-3.5 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
         <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-sky-600" />
+          <Layers className="w-4 h-4 shrink-0 text-sky-600" />
           <h3 className="text-sm font-bold text-slate-900">
             مقایسه تحلیلی روش‌های عددی حل معادله f(x) = 0
           </h3>
         </div>
 
-        <div className="overflow-x-auto">
+        <p className="text-xs text-slate-500 lg:hidden">برای دیدن ستون‌های دیگر، داخل جدول به‌صورت افقی پیمایش کنید.</p>
+        <div
+          role="region"
+          aria-label="جدول مقایسهٔ روش‌های حل"
+          tabIndex={0}
+          className="min-w-0 overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-sky-500"
+        >
           <table className="w-full text-xs text-right whitespace-nowrap">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
               <tr>
@@ -77,9 +110,9 @@ export const EducationalGuide: React.FC = () => {
       </div>
 
       {/* Stopping Criteria & Residual vs Error */}
-      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4">
+      <div className="p-3.5 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4">
         <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-sky-600" />
+          <Compass className="w-4 h-4 shrink-0 text-sky-600" />
           <h3 className="text-sm font-bold text-slate-900">
             تفکیک علمی معیارهای توقف و تفاوت باقیمانده با خطا
           </h3>
@@ -90,7 +123,7 @@ export const EducationalGuide: React.FC = () => {
             <span className="font-bold text-xs text-slate-900 block mb-1">
               ۱. خطای مطلق (|xₖ - xₖ₋₁| &lt; ε)
             </span>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
+            <p className="text-sm md:text-[11px] text-slate-600 leading-relaxed">
               تغییرات متوالی ریشه را می‌سنجد. مناسب مسائلی است که بزرگی ریشه نزدیک به ۱ باشد. در روش تنصیف، طول شعاع بازه (b - a)/2 کران بالای قطعی خطاست.
             </p>
           </div>
@@ -99,7 +132,7 @@ export const EducationalGuide: React.FC = () => {
             <span className="font-bold text-xs text-slate-900 block mb-1">
               ۲. خطای نسبی (|Δx| / |xₖ| &lt; ε)
             </span>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
+            <p className="text-sm md:text-[11px] text-slate-600 leading-relaxed">
               مناسب ریشه‌های بسیار بزرگ (مثلاً ۱۰⁶) یا بسیار کوچک (مثلاً ۱۰⁻⁶) که مقایسه مطلق در آن‌ها گمراه‌کننده است و مقیاس عدد را در نظر می‌گیرد.
             </p>
           </div>
@@ -108,7 +141,7 @@ export const EducationalGuide: React.FC = () => {
             <span className="font-bold text-xs text-slate-900 block mb-1">
               ۳. باقیمانده تابع (|f(xₖ)| &lt; ε)
             </span>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
+            <p className="text-sm md:text-[11px] text-slate-600 leading-relaxed">
               میزان نزدیک بودن مقدار خروجی تابع به صفر است. در توابعی با شیب بسیار تند، ریشه ممکن است دقیق باشد ولی باقیمانده بزرگ بماند؛ بالعکس در توابع تخت، باقیمانده سریع صفر می‌شود.
             </p>
           </div>
@@ -124,7 +157,7 @@ export const EducationalGuide: React.FC = () => {
       </div>
 
       {/* Failure Modes & Troubleshooting */}
-      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+      <div className="p-3.5 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
         <h3 className="text-sm font-bold text-slate-900">
           شرایط شکست و خطاهای الگوریتم‌ها و نحوه رفع آن‌ها
         </h3>
