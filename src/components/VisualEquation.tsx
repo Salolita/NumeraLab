@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MathfieldElement } from 'mathlive';
+import 'mathlive/fonts.css';
 import { compileExpression } from '../utils/mathParser';
 
 export function VisualEquation({ onApply }: { onApply: (value: string) => void }) {
@@ -11,6 +12,8 @@ export function VisualEquation({ onApply }: { onApply: (value: string) => void }
     let disposed = false;
     void import('mathlive').then(({ MathfieldElement }) => {
       if (disposed || !host.current) return;
+      MathfieldElement.fontsDirectory = null;
+      MathfieldElement.soundsDirectory = null;
       const field = new MathfieldElement();
       field.setAttribute('aria-label', 'فرمول ریاضی');
       field.mathVirtualKeyboardPolicy = 'manual';
