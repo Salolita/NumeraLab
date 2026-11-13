@@ -6,7 +6,7 @@ export interface CompiledFunction {
 }
 
 export function normalizeDigits(value: string) {
-  return value.replace(/[۰-۹٠-٩]/g, (digit) => String(digit.charCodeAt(0) & 15))
+  return value.replace(/[۰-۹٠-٩]/g, (digit) => String(digit.charCodeAt(0) - (digit >= '۰' ? 0x06f0 : 0x0660)))
     .replace(/٫/g, '.').replace(/−/g, '-');
 }
 
@@ -23,7 +23,7 @@ export function normalizeMathExpression(expr: string): string {
   cleaned = cleaned.replace(/÷/g, '/');
   cleaned = cleaned.replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+)/g, (_, exponent: string) =>
     '^(' + Array.from(exponent, (character) => character === '⁻' ? '-' : String('⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(character))).join('') + ')');
-  cleaned = cleaned.replace(/√\s*(\([^()]*\)|x|\d+(?:\.\d+)?)/g, 'sqrt($1)');
+  cleaned = cleaned.replace(/√\s*\(/g, 'sqrt(').replace(/√\s*(x|\d+(?:\.\d+)?)/g, 'sqrt($1)');
   cleaned = cleaned.replace(/\|([^|]+)\|/g, 'abs($1)').replace(/·/g, '*');
   const sides = cleaned.split('=');
   if (sides.length === 2 && sides.every((side) => side.trim())) {

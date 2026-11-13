@@ -94,7 +94,7 @@ export const SolverResultCard: React.FC<SolverResultCardProps> = ({
                   onClick={() => setDecimalPlaces(dp)}
                   className={`min-h-8 min-w-7 px-1.5 py-0.5 sm:min-h-0 sm:min-w-0 rounded font-mono cursor-pointer ${
                     decimalPlaces === dp
-                      ? 'bg-slate-800 text-white font-semibold'
+                      ? 'bg-sky-600 text-white font-semibold'
                       : 'hover:bg-slate-100 text-slate-500'
                   }`}
                 >

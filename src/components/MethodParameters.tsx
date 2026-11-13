@@ -1,4 +1,5 @@
 import React from 'react';
+import { normalizeDigits } from '../utils/mathParser';
 import { MethodType, StoppingCriterion } from '../types/numerical';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
@@ -124,9 +125,9 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
           <div className="max-w-xs">
             <input
               type="text"
-                dir="ltr"
-              aria-label="حدس اول"
-                value={x0}
+              dir="ltr"
+              aria-label="حدس اولیه"
+              value={x0}
               onChange={(e) => setX0(e.target.value)}
               className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
             />
@@ -178,9 +179,9 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
           </label>
           <input
             type="text"
-                dir="ltr"
+            dir="ltr"
             aria-label="تلورانس"
-                value={tolerance}
+            value={tolerance}
             onChange={(e) => setTolerance(e.target.value)}
             className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
           />
@@ -191,7 +192,7 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
                 type="button"
                 onClick={() => setTolerance(String(tol))}
                 className={`min-h-8 px-1.5 py-0.5 rounded font-mono sm:min-h-0 transition-colors cursor-pointer ${
-                  Number(tolerance) === tol ? 'bg-sky-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  Number(normalizeDigits(tolerance)) === tol ? 'bg-sky-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                 }`}
               >
                 10^{Math.round(Math.log10(tol))}
@@ -207,9 +208,10 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
           </label>
           <input
             type="text"
-                dir="ltr"
+            dir="ltr"
             aria-label="سقف تکرار"
-                value={maxIterations}
+            inputMode="numeric"
+            value={maxIterations}
             onChange={(e) => setMaxIterations(e.target.value)}
             className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500"
           />
@@ -224,6 +226,7 @@ export const MethodParameters: React.FC<MethodParametersProps> = ({
             معیار توقف الگوریتم
           </label>
           <select
+            aria-label="معیار توقف الگوریتم"
             value={stoppingCriterion}
             onChange={(e) => setStoppingCriterion(e.target.value as StoppingCriterion)}
             className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-base sm:text-xs focus:ring-2 focus:ring-sky-100 focus:border-sky-500 cursor-pointer"

@@ -31,6 +31,7 @@ interface Props {
 
 export function WorkedSolution({ result, initial, activeStep, onStepChange }: Props) {
   const row = activeStep > 0 ? result.iterations[activeStep - 1] : undefined;
+  const next = result.iterations[activeStep];
   const step = row ? describe(row, result.method) : null;
   const residual = row && ('fc' in row ? Math.abs(row.fc) : row.nextResidual);
   const lastStep = result.iterations.at(-1)?.step ?? 0;
@@ -73,6 +74,7 @@ export function WorkedSolution({ result, initial, activeStep, onStepChange }: Pr
                 {step.relative !== undefined && <>، خطای نسبی <bdi>{number(step.relative)}</bdi></>}
                 {residual !== undefined && <>، قدر مطلق مقدار تابع <bdi>{number(residual)}</bdi></>}
               </p>
+              {next && 'a' in next && <p className="mt-1 text-slate-600">بازهٔ بعدی <bdi>[{number(next.a)}, {number(next.b)}]</bdi> است.</p>}
             </li>
           </>
         )}

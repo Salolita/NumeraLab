@@ -97,6 +97,7 @@
 .formula-preview math { font-size: 1.15rem; }
 .active-iteration { background: #39225c; color: #efe6ff; }
 .plot-initial { color: #c0a4ff; }
+.plot-surface { background: #130e1e; }
 
 /* Custom scrollbar for tables and code blocks */
 ::-webkit-scrollbar {

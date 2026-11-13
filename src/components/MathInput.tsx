@@ -36,14 +36,14 @@ export const MathInput: React.FC<MathInputProps> = ({
     return showDerivativeSection ? getSymbolicDerivative(expression) : { derivativeExpr: null };
   }, [expression, showDerivativeSection]);
 
-  const insertSymbol = (sym: string) => {
+  const insertSymbol = (sym: string, offset = sym.length) => {
     const field = input.current;
     const start = field?.selectionStart ?? expression.length;
     const end = field?.selectionEnd ?? start;
     setExpression(expression.slice(0, start) + sym + expression.slice(end));
     requestAnimationFrame(() => {
       field?.focus();
-      field?.setSelectionRange(start + sym.length, start + sym.length);
+      field?.setSelectionRange(start + offset, start + offset);
     });
   };
 
@@ -64,8 +64,8 @@ export const MathInput: React.FC<MathInputProps> = ({
     { label: '×', value: ' * ' },
     { label: '÷', value: ' / ' },
     { label: '^', value: '^' },
-    { label: '( )', value: '()' },
-    { label: 'کسر', value: '()/()' },
+    { label: '( )', value: '()', offset: 1 },
+    { label: 'کسر', value: '()/()', offset: 1 },
   ];
 
   return (
@@ -133,7 +133,7 @@ export const MathInput: React.FC<MathInputProps> = ({
             <button
               key={btn.label}
               type="button"
-              onClick={() => insertSymbol(btn.value)}
+              onClick={() => insertSymbol(btn.value, btn.offset)}
               className="min-h-10 px-2.5 py-1 text-xs sm:min-h-0 font-mono bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded transition-colors cursor-pointer"
             >
               {btn.label}

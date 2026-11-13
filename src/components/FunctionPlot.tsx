@@ -241,7 +241,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
 
       {/* SVG Plot Canvas */}
       <div
-        className="relative h-[clamp(240px,55cqw,420px)] bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner select-none md:h-[clamp(300px,55cqw,420px)]"
+        className="plot-surface relative h-[clamp(240px,55cqw,420px)] rounded-xl overflow-hidden border border-slate-200 shadow-inner select-none md:h-[clamp(300px,55cqw,420px)]"
       >
         <svg
           ref={plotRef}
@@ -340,7 +340,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                     width={Math.max(1, toSvgX(currentStep.b) - toSvgX(currentStep.a))}
                     height={dimensions.height}
                     fill="rgba(158, 107, 255, 0.16)"
-                    stroke="rgba(14, 165, 233, 0.4)"
+                    stroke="rgba(158, 107, 255, 0.4)"
                     strokeWidth="1"
                     strokeDasharray="4,3"
                   />
@@ -479,7 +479,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
           )}
 
           {/* Final Root Marker */}
-          {result && result.root !== null && (
+          {result?.status === 'converged' && result.root !== null && activeStep === lastStep && (
             <g>
               <circle
                 cx={toSvgX(result.root)}
@@ -518,7 +518,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
                 width="120"
                 height="24"
                 rx="4"
-                fill="rgba(15, 23, 42, 0.9)"
+                fill="#1c1528"
                 stroke="#715b92"
               />
               <text
@@ -536,12 +536,12 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
         </svg>
 
         {/* Legend */}
-        <div className="absolute top-2.5 right-2.5 max-w-[calc(100%-1.25rem)] bg-slate-900/80 backdrop-blur-xs border border-slate-700/80 rounded-md px-2.5 py-1.5 text-[11px] text-slate-300 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="absolute top-2.5 right-2.5 max-w-[calc(100%-1.25rem)] bg-white backdrop-blur-xs border border-slate-200 rounded-md px-2.5 py-1.5 text-[11px] text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 bg-sky-400 inline-block rounded"></span>
             <span>منحنی f(x)</span>
           </div>
-          {result && result.root !== null && (
+          {result?.status === 'converged' && result.root !== null && activeStep === lastStep && (
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
               <span>ریشه تقریبی</span>
@@ -606,7 +606,7 @@ export const FunctionPlot: React.FC<FunctionPlotProps> = ({
               value={activeStep}
               onChange={(e) => selectStep(Number(e.target.value))}
               aria-label="انتخاب گام نمودار"
-              className="w-full h-10 rounded-lg cursor-pointer accent-sky-600 sm:pointer-fine:h-1.5 sm:pointer-fine:appearance-none sm:pointer-fine:bg-slate-200"
+              className="w-full h-10 rounded-lg cursor-pointer sm:pointer-fine:h-5"
             />
           </div>
 
