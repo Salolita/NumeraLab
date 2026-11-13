@@ -1,23 +1,10 @@
 import {
   cookieValue, currentProfile, digest, field, internalEmail, limit, PortalError,
-  query, readBody, reply, rpc, setting, studentNumber, supabase, token, tokenPattern, write,
+  query, readBody, reply, rpc, setting, studentNumber, supabase, token, write,
 } from '../server/portal-store.js';
 import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
-
-interface Ticket {
-  invite_hash: string | null;
-  profile_id: string | null;
-}
-
-async function activeTicket(raw: string) {
-  if (!tokenPattern.test(raw)) throw new PortalError(400, 'لینک معتبر نیست. از ربات لینک تازه بگیرید.');
-  const [ticket] = await query<Ticket[]>('portal_tickets', {
-    token_hash: `eq.${digest(raw)}`, expires_at: `gt.${new Date().toISOString()}`, select: 'invite_hash,profile_id', limit: '1',
-  });
-  if (!ticket) throw new PortalError(400, 'لینک منقضی شده یا قبلاً استفاده شده است. از ربات لینک تازه بگیرید.');
-  return ticket;
-}
+import { telegramIdentity } from '../server/telegram-identity.js';
 
 export default {
   async fetch(request: Request) {
@@ -52,14 +39,15 @@ export default {
       }
 
       if (action === 'register') {
-        const rawTicket = field(body, 'ticket');
-        const ticket = await activeTicket(rawTicket);
-        if (!ticket.invite_hash) throw new PortalError(400, 'لینک ثبت‌نام معتبر نیست.');
-        await limit(`ticket:${ticket.invite_hash}`, 8);
-        const [invite] = await query<{ role: string }[]>('portal_invites', {
-          code_hash: `eq.${ticket.invite_hash}`, select: 'role', used_at: 'is.null', expires_at: `gt.${new Date().toISOString()}`,
+        const telegram = telegramIdentity(field(body, 'telegramInitData'));
+        const role = field(body, 'role');
+        if (role !== 'student' && role !== 'teacher') throw new PortalError(400, 'نوع حساب معتبر نیست.');
+        await limit(`register:telegram:${telegram}`, 8);
+        const [invite] = await query<{ code_hash: string; student_number: string | null }[]>('portal_invites', {
+          telegram_id: `eq.${telegram}`, role: `eq.${role}`, select: 'code_hash,student_number', used_at: 'is.null',
+          expires_at: `gt.${new Date().toISOString()}`, order: 'expires_at.desc', limit: '1',
         });
-        if (!invite) throw new PortalError(400, 'دعوت معتبر نیست.');
+        if (!invite) throw new PortalError(403, 'دعوت فعال برای این حساب تلگرام پیدا نشد. اگر قبلاً ثبت‌نام کرده‌اید، از سایت وارد شوید.');
         const first = field(body, 'firstName').trim();
         const last = field(body, 'lastName').trim();
         const number = studentNumber(field(body, 'studentNumber'));
@@ -68,14 +56,19 @@ export default {
         const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(parsedDate.getTime())
           && parsedDate.toISOString().slice(0, 10) === date && date >= '1900-01-01' && date < new Date().toISOString().slice(0, 10);
         if (!first || !last || first.length > 80 || last.length > 80 ||
-          (invite.role === 'student' && (!eligibleStudent(number) || !validDate))) {
+          (role === 'student' && (!eligibleStudent(number) || number !== invite.student_number || !validDate))) {
           throw new PortalError(422, 'مشخصات ثبت‌نام معتبر نیست. اطلاعات و شرایط دعوت را بررسی کنید.');
         }
+        const ticket = digest(token());
+        const claimedRole = await rpc<string | null>('portal_claim_invite', {
+          p_code: invite.code_hash, p_telegram: telegram, p_ticket: ticket,
+        });
+        if (claimedRole !== role) throw new PortalError(409, 'این دعوت دیگر قابل استفاده نیست.');
         await supabase('/auth/v1/admin/users', 'POST', {
           email: internalEmail(username), password, email_confirm: true,
           app_metadata: { portal_signup: {
-            ticket: digest(rawTicket), username, first_name: first, last_name: last,
-            student_number: invite.role === 'student' ? number : null, birth_date: invite.role === 'student' ? date : null,
+            ticket, username, first_name: first, last_name: last,
+            student_number: role === 'student' ? number : null, birth_date: role === 'student' ? date : null,
           } },
         });
         return reply({ registered: true });
