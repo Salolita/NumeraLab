@@ -13,7 +13,7 @@ export default {
       const endpoint = new URL(setting('MATLAB_INTERPOLATION_URL'));
       if (endpoint.protocol !== 'https:') throw new PortalError(503, 'نشانی سرویس MATLAB باید HTTPS باشد.');
       const profile = await currentProfile(request);
-      if (!profile) throw new PortalError(401, 'برای اجرای MATLAB از ربات وارد پنل شوید.');
+      if (!profile) throw new PortalError(401, 'برای اجرای MATLAB وارد پنل شوید.');
       await limit(`matlab:${profile.id}`, 10);
       const { x, y, t } = await readBody(request, 8000);
       if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.length > 30

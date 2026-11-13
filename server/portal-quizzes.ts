@@ -3,11 +3,28 @@ import { field, limit, PortalError, query, uuidPattern, write, type Profile } fr
 interface Question { prompt: string; options: string[]; correct: number }
 interface Quiz { id: string; title: string; published: boolean; content: Question[]; audience?: string[] }
 
+const usernamePattern = /^[a-z0-9][a-z0-9_.-]{2,31}$/;
+
+async function activeStudents(usernames: string[]) {
+  if (!usernames.length) return [];
+  return query<{ username: string; first_name: string; last_name: string }[]>('portal_profiles', {
+    username: `in.(${usernames.map((username) => `"${username}"`).join(',')})`,
+    role: 'eq.student', active: 'eq.true', select: 'username,first_name,last_name',
+  });
+}
+
 export async function quizAction(action: string, body: Record<string, unknown>, profile: Profile) {
   const teacher = profile.role === 'teacher';
   const own = { owner_id: `eq.${profile.id}` };
   const visible = { published: 'eq.true', audience: `cs.{"${profile.username}"}` };
   await limit(`quiz:${profile.id}`, 100);
+  if (action === 'quiz:student-lookup' && teacher) {
+    const username = field(body, 'username').trim().toLowerCase();
+    if (!usernamePattern.test(username)) throw new PortalError(422, 'نام کاربری دقیق دانشجو را وارد کنید.');
+    const [student] = await activeStudents([username]);
+    if (!student) throw new PortalError(404, 'دانشجوی فعالی با این نام کاربری پیدا نشد.');
+    return { student };
+  }
   if (action === 'quiz:list') {
     const quizzes = await query<Quiz[]>('portal_quizzes', {
       ...(teacher ? own : visible), select: teacher ? 'id,title,published,content,audience' : 'id,title,published,content',
@@ -22,9 +39,12 @@ export async function quizAction(action: string, body: Record<string, unknown>, 
     const title = field(body, 'title').trim();
     const questions = body.questions as Question[];
     const audience = [...new Set(field(body, 'audience').toLowerCase().split(/[\s,،]+/).filter(Boolean))];
-    if (audience.length < 1 || audience.length > 100 || audience.some((name) => !/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(name))) {
+    if (audience.length < 1 || audience.length > 100 || audience.some((name) => !usernamePattern.test(name))) {
       throw new PortalError(422, 'نام کاربری ۱ تا ۱۰۰ دانشجو را وارد کنید.');
     }
+    const found = new Set((await activeStudents(audience)).map(({ username }) => username));
+    const missing = audience.filter((username) => !found.has(username));
+    if (missing.length) throw new PortalError(422, `حساب دانشجویی فعال پیدا نشد: ${missing.join(', ')}`);
     if (!title || title.length > 120 || !Array.isArray(questions) || questions.length < 1 || questions.length > 15 ||
       questions.some((q) => !q || typeof q.prompt !== 'string' || !q.prompt.trim() || q.prompt.length > 1000
         || !Array.isArray(q.options) || q.options.length !== 4

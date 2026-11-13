@@ -12,6 +12,7 @@ export function AccountPanel() {
   const [account, setAccount] = useState<Account | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [finished, setFinished] = useState(false);
+  const [registeredUsername, setRegisteredUsername] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const mode = link?.[1];
@@ -40,14 +41,19 @@ export function AccountPanel() {
     setError('');
     setBusy(true);
     try {
-      await portal({ ...values, action: registering ? 'register' : 'login', ticket: link?.[2] });
+      await portal({ ...values, action: registering ? 'register' : 'login', ...(registering ? { ticket: link?.[2] } : {}) });
       form.reset();
-      if (registering) setFinished(true);
+      if (registering) {
+        setRegisteredUsername(String(values.username));
+        setFinished(true);
+        setLink(null);
+      }
       else {
         const { profile } = await portal<{ profile: Account | null }>();
-        if (!profile) throw new Error('نشست ورود برقرار نشد. از ربات لینک تازه بگیرید.');
+        if (!profile) throw new Error('نشست ورود برقرار نشد. دوباره وارد شوید.');
         setAccount(profile);
         setLink(null);
+        setFinished(false);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'درخواست انجام نشد.');
@@ -58,7 +64,7 @@ export function AccountPanel() {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="text-xl font-black">{account ? (account.role === 'teacher' ? 'پنل مدیریت آزمون استاد' : 'پنل دانشجو') : registering && !finished ? (mode === 'student' ? 'ساخت حساب دانشجو' : 'فعال‌سازی حساب استاد') : 'ورود به پنل نامرالب'}</h1>
       {account && <button type="button" className="rounded-lg border border-slate-300 px-3 py-1" onClick={async () => {
-        try { await portal({ action: 'logout' }); setAccount(null); setFinished(true); }
+        try { await portal({ action: 'logout' }); setAccount(null); setFinished(false); }
         catch (error) { setError((error as Error).message); }
       }}>خروج</button>}
     </div>
@@ -68,8 +74,10 @@ export function AccountPanel() {
       <QuizPanel role={account.role} />
     </> : enabled === null ? <p>در حال بررسی وضعیت پنل…</p> : !enabled ? (
       <p className="text-slate-600">سامانهٔ حساب‌ها هنوز فعال نشده است.</p>
-    ) : link && !finished ? (
-      <form className="space-y-4" onSubmit={submit}>
+    ) : (
+      <>
+      {finished && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">حساب ساخته شد. با نام کاربری و رمز خود همین‌جا وارد شوید.</p>}
+      <form className="space-y-4" onSubmit={submit} key={registering ? mode : 'login'}>
         {mode === 'student' && <p className="rounded-lg bg-sky-50 p-3 text-sky-900">این پنل برای دانشجویان ورودی ۴۰۴ طراحی شده است.</p>}
         {registering && <div className="grid gap-3 sm:grid-cols-2">
           <label>نام<input name="firstName" autoComplete="given-name" maxLength={80} required className={fields} /></label>
@@ -79,33 +87,17 @@ export function AccountPanel() {
             <label>تاریخ تولد (میلادی)<input name="birthDate" type="date" autoComplete="bday" required className={fields} /></label>
           </>}
         </div>}
-        <label className="block">نام کاربری<input name="username" dir="ltr" autoComplete="username" minLength={3} maxLength={32} required className={fields} /></label>
+        <label className="block">نام کاربری<input name="username" dir="ltr" autoComplete="username" minLength={3} maxLength={32} required className={fields} defaultValue={registering ? '' : registeredUsername} /></label>
         <label className="block">رمز عبور<input name="password" type="password" dir="ltr" autoComplete={registering ? 'new-password' : 'current-password'} minLength={12} maxLength={72} required className={fields} /></label>
         {registering && <p className="text-sm text-slate-600">نام کاربری را انگلیسی و رمز را حداقل ۱۲ نویسه انتخاب کنید.</p>}
         <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : registering ? 'ساخت حساب' : 'ورود'}</button>
-        <a className="ms-4 text-sky-800" href={bot + '?start=' + (registering ? mode : 'login')}>گرفتن لینک تازه از ربات</a>
+        {registering && <a className="ms-4 text-sky-800" href={bot + '?start=' + mode}>گرفتن دعوت تازه</a>}
       </form>
-    ) : <>
-      {finished && registering && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">حساب ساخته شد. حالا از دکمهٔ ورود، لینک تازه بگیرید.</p>}
-      <div className="space-y-3">
-        <div className="rounded-xl bg-slate-50 p-4">
-          <h2 className="font-bold">حساب دارم</h2>
-          <p className="mb-3 mt-1 text-sm text-slate-600">از ربات لینک ورود بگیرید و سپس نام کاربری و رمز را در فرم سایت وارد کنید.</p>
-          <a className={button + ' inline-block'} href={bot + '?start=login'}>گرفتن لینک ورود از تلگرام ↗</a>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <h2 className="font-bold">دانشجوی ورودی ۴۰۴ هستم</h2>
-            <p className="my-2 text-sm text-slate-600">شناسهٔ تلگرام و شمارهٔ دانشجویی را به مدیر گروه بدهید. پس از تأیید، همین دکمه فرم ثبت‌نام را از ربات می‌گیرد.</p>
-            <a className="font-bold text-sky-800" href={bot + '?start=student'}>شروع ثبت‌نام دانشجو ↗</a>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <h2 className="font-bold">استاد هستم</h2>
-            <p className="my-2 text-sm text-slate-600">شناسهٔ تلگرام را به مدیر سامانه بدهید تا دعوت صادر کند. پس از فعال‌سازی، از همین پنل آزمون بسازید.</p>
-            <a className="font-bold text-sky-800" href={bot + '?start=teacher'}>فعال‌سازی حساب استاد ↗</a>
-          </div>
-        </div>
-      </div>
-    </>}
+      {!registering && <div className="flex flex-wrap gap-4 border-t border-slate-200 pt-4 text-sm">
+        <a className="font-bold text-sky-800" href={bot + '?start=student'}>ثبت‌نام دانشجو (ورودی ۴۰۴) ↗</a>
+        <a className="font-bold text-sky-800" href={bot + '?start=teacher'}>فعال‌سازی حساب استاد ↗</a>
+      </div>}
+      </>
+    )}
   </section>;
 }

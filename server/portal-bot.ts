@@ -1,4 +1,4 @@
-import { digest, equalSecret, limit, PortalError, query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern, write } from './portal-store.js';
+import { digest, equalSecret, limit, PortalError, query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern } from './portal-store.js';
 
 const labels = {
   login: 'ورود به پنل', student: 'ساخت حساب دانشجو', teacher: 'فعال‌سازی حساب استاد',
@@ -78,12 +78,9 @@ export async function telegramWebhook(request: Request) {
       const [profile] = await query<{ id: string }[]>('portal_profiles', {
         telegram_id: `eq.${id}`, active: 'eq.true', select: 'id', limit: '1',
       });
-      if (!profile) await send(id, 'حساب فعالی برای این تلگرام پیدا نشد. از منو «ساخت حساب دانشجو» یا «فعال‌سازی حساب استاد» را انتخاب کنید.', menu);
-      else {
-        const ticket = token();
-        await write('portal_tickets', 'POST', { token_hash: digest(ticket), telegram_id: id, profile_id: profile.id });
-        await send(id, 'دکمهٔ زیر را بزنید و نام کاربری و رمزتان را در سایت وارد کنید. لینک یک‌بارمصرف است و ۱۰ دقیقه اعتبار دارد.', linkButton('باز کردن فرم ورود', panelLink(ticket, 'login')));
-      }
+      await send(id, profile ? 'با نام کاربری و رمز خود وارد شوید.'
+        : 'اگر حساب دارید، فرم ورود را باز کنید. برای حساب تازه، از منو گزینهٔ ساخت حساب را بزنید.',
+      linkButton('باز کردن فرم ورود', setting('PORTAL_ORIGIN') + '/#panel'));
     } else if (command === '/id' || text === labels.id) {
       await send(id, `شناسهٔ عددی تلگرام شما: ${id}`, menu);
     } else if (isAdmin && text === labels.inviteStudent) {

@@ -40,14 +40,11 @@ export default {
       }
       if (action.startsWith('quiz:')) {
         const profile = await currentProfile(request);
-        if (!profile) throw new PortalError(401, 'از ربات وارد پنل شوید.');
+        if (!profile) throw new PortalError(401, 'ابتدا وارد پنل شوید.');
         return reply(await quizAction(action, body, profile));
       }
       if (action !== 'register' && action !== 'login') throw new PortalError(400, 'درخواست معتبر نیست.');
 
-      const rawTicket = field(body, 'ticket');
-      const ticket = await activeTicket(rawTicket);
-      await limit(`ticket:${ticket.profile_id ?? ticket.invite_hash}`, 8);
       const username = field(body, 'username').trim().toLowerCase();
       const password = field(body, 'password');
       if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username) || password.length < 12 || new TextEncoder().encode(password).length > 72) {
@@ -55,7 +52,10 @@ export default {
       }
 
       if (action === 'register') {
+        const rawTicket = field(body, 'ticket');
+        const ticket = await activeTicket(rawTicket);
         if (!ticket.invite_hash) throw new PortalError(400, 'لینک ثبت‌نام معتبر نیست.');
+        await limit(`ticket:${ticket.invite_hash}`, 8);
         const [invite] = await query<{ role: string }[]>('portal_invites', {
           code_hash: `eq.${ticket.invite_hash}`, select: 'role', used_at: 'is.null', expires_at: `gt.${new Date().toISOString()}`,
         });
@@ -81,16 +81,24 @@ export default {
         return reply({ registered: true });
       }
 
-      if (!ticket.profile_id) throw new PortalError(400, 'از ربات لینک ورود بگیرید.');
+      const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      await limit(`login:ip:${ip}`, 35);
+      await limit(`login:username:${username}`, 10);
+      const invalid = 'نام کاربری یا رمز عبور معتبر نیست.';
+      const auth = await supabase<{ user: { id: string }; access_token: string }>('/auth/v1/token?grant_type=password', 'POST', {
+        email: internalEmail(username), password,
+      }, true);
+      // Supabase Auth verifies the password. The portal issues its own revocable session.
+      // End the upstream session so its refresh token does not remain usable.
+      await supabase('/auth/v1/logout?scope=local', 'POST', undefined, true, auth.access_token);
       const [expected] = await query<{ id: string }[]>('portal_profiles', {
-        id: `eq.${ticket.profile_id}`, username: `eq.${username}`, active: 'eq.true', select: 'id', limit: '1',
+        id: `eq.${auth.user.id}`, username: `eq.${username}`, active: 'eq.true', select: 'id', limit: '1',
       });
-      if (!expected) throw new PortalError(401, 'نام کاربری یا رمز عبور معتبر نیست.');
-      const auth = await supabase<{ user: { id: string } }>('/auth/v1/token?grant_type=password', 'POST', { email: internalEmail(username), password }, true);
+      if (!expected) throw new PortalError(401, invalid);
       const session = token();
-      if (auth.user.id !== expected.id || !await rpc<boolean>('portal_open_session', {
-        p_ticket: digest(rawTicket), p_user: expected.id, p_session: digest(session),
-      })) throw new PortalError(401, 'لینک دیگر معتبر نیست. از ربات لینک تازه بگیرید.');
+      await write('portal_sessions', 'POST', { token_hash: digest(session), profile_id: expected.id });
+      const previous = cookieValue(request);
+      if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
       return reply({ loggedIn: true }, 200, session);
     } catch (error) {
       if (error instanceof PortalError) return reply({ error: error.message }, error.status);

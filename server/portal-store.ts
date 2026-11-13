@@ -21,16 +21,17 @@ export function equalSecret(left: string, right: string) {
   return timingSafeEqual(Buffer.from(digest(left)), Buffer.from(digest(right)));
 }
 
-export async function supabase<T>(path: string, method = 'GET', body?: unknown, publicKey = false): Promise<T> {
+export async function supabase<T>(path: string, method = 'GET', body?: unknown, publicKey = false, userToken?: string): Promise<T> {
   const key = setting(publicKey ? 'SUPABASE_PUBLIC_KEY' : 'SUPABASE_SECRET_KEY');
   const headers: Record<string, string> = { apikey: key, 'Content-Type': 'application/json', Prefer: 'return=representation' };
-  if (key.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
+  if (userToken || key.startsWith('eyJ')) headers.Authorization = `Bearer ${userToken ?? key}`;
   const response = await fetch(setting('SUPABASE_URL').replace(/\/$/, '') + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(7000),
   });
   if (!response.ok) {
     if (response.status === 409) throw new PortalError(409, 'این درخواست قبلاً ثبت شده یا یکی از مشخصات تکراری است.');
-    if (publicKey && response.status === 400) throw new PortalError(401, 'نام کاربری یا رمز عبور معتبر نیست.');
+    if (response.status === 429) throw new PortalError(429, 'تعداد تلاش‌ها زیاد است. چند دقیقه دیگر دوباره امتحان کنید.');
+    if (path.startsWith('/auth/v1/token?') && [400, 401].includes(response.status)) throw new PortalError(401, 'نام کاربری یا رمز عبور معتبر نیست.');
     if (path === '/auth/v1/admin/users' && [400, 422, 500].includes(response.status)) {
       throw new PortalError(422, 'حساب ساخته نشد. اطلاعات، نام کاربری و اعتبار لینک را بررسی کنید.');
     }
