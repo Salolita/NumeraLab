@@ -13,6 +13,8 @@ import { FunctionPlot } from './components/FunctionPlot';
 import { ValidationTestsModal } from './components/ValidationTestsModal';
 import { EducationalGuide } from './components/EducationalGuide';
 import { WorkedSolution } from './components/WorkedSolution';
+import { AccountPanel } from './components/AccountPanel';
+import { InterpolationPanel } from './components/InterpolationPanel';
 import { Calculator, Play, Sparkles } from 'lucide-react';
 
 interface SolverRun {
@@ -35,7 +37,8 @@ function evaluateAt(fn: ((x: number) => number) | null, x: number) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'solver' | 'benchmarks' | 'tests' | 'guide'>('solver');
+  const [activeTab, setActiveTab] = useState<'solver' | 'benchmarks' | 'tests' | 'guide' | 'panel' | 'interpolation'>(() =>
+    /^#panel(?:\/|$)/.test(location.hash) ? 'panel' : 'solver');
   
   // Mathematical expression state
   const [expression, setExpression] = useState<string>('x^3 - x - 2');
@@ -129,6 +132,12 @@ export default function App() {
   useEffect(() => { solve(); }, []);
 
   useEffect(() => {
+    const openPanel = () => { if (/^#panel(?:\/|$)/.test(location.hash)) setActiveTab('panel'); };
+    window.addEventListener('hashchange', openPanel);
+    return () => window.removeEventListener('hashchange', openPanel);
+  }, []);
+
+  useEffect(() => {
     if (!isPlaying || activeStep >= iterationCount) return;
     const timer = window.setTimeout(() => {
       const nextStep = activeStep + 1;
@@ -166,6 +175,14 @@ export default function App() {
 
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setActiveTab('interpolation')} aria-current={activeTab === 'interpolation' ? 'page' : undefined}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">درون‌یابی و ورود از تصویر</button>
+          <button type="button" onClick={() => setActiveTab('panel')} aria-current={activeTab === 'panel' ? 'page' : undefined}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">پنل دانشجو و استاد</button>
+        </div>
+        {activeTab === 'panel' && <AccountPanel />}
+        {activeTab === 'interpolation' && <InterpolationPanel />}
         {/* Tab 1: Interactive Solver */}
         {activeTab === 'solver' && (
           <div className="space-y-6">

@@ -8,17 +8,20 @@ function describe(row: IterationStep, method: SolverResult['method']) {
     formula: 'xₖ₊₁ = xₖ − f(xₖ) / f′(xₖ)',
     substitution: `${number(row.xn)} − (${number(row.fxn)}) / (${number(row.dfxn)}) ≈ ${number(row.xnNext)}`,
     absolute: row.absError, relative: row.relError,
+    matlab: 'xNext = xk - fxk / dfxk;',
   };
   if ('xCurr' in row) return {
     formula: 'xₖ₊₁ = xₖ − f(xₖ) · (xₖ − xₖ₋₁) / (f(xₖ) − f(xₖ₋₁))',
     substitution: `${number(row.xCurr)} − (${number(row.fxCurr)}) · (${number(row.xCurr)} − (${number(row.xPrev)})) / (${number(row.fxCurr)} − (${number(row.fxPrev)})) ≈ ${number(row.xNext)}`,
     absolute: row.absError, relative: row.relError,
+    matlab: 'xNext = xk - fxk * (xk - xPrev) / (fxk - fxPrev);',
   };
   return {
     formula: method === 'bisection' ? 'c = (a + b) / 2' : 'c = (a · f(b) − b · f(a)) / (f(b) − f(a))',
     substitution: method === 'bisection' ? `(${number(row.a)} + (${number(row.b)})) / 2 ≈ ${number(row.c)}`
       : `(${number(row.a)} · (${number(row.fb)}) − ${number(row.b)} · (${number(row.fa)})) / (${number(row.fb)} − (${number(row.fa)})) ≈ ${number(row.c)}`,
     absolute: row.error, relative: row.relativeError,
+    matlab: method === 'bisection' ? 'c = (a + b) / 2;' : 'c = (a * fb - b * fa) / (fb - fa);',
   };
 }
 
@@ -68,6 +71,9 @@ export function WorkedSolution({ result, initial, activeStep, onStepChange }: Pr
           <>
             <li><strong>فرمول</strong><span className="solution-equation" dir="ltr">{step.formula}</span></li>
             <li><strong>جایگذاری و نتیجه</strong><span className="solution-equation" dir="ltr">{step.substitution}</span></li>
+            <li><details><summary className="cursor-pointer text-sky-800">دستور MATLAB این مرحله</summary>
+              <code className="solution-equation" dir="ltr">{step.matlab}</code>
+            </details></li>
             <li>
               <strong>بررسی توقف</strong>
               <p className="mt-1 text-slate-600">{result.method === 'bisection' ? 'نیم‌طول بازه' : 'خطای مطلق'} <bdi>{number(step.absolute)}</bdi>

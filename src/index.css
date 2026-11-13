@@ -98,6 +98,17 @@
 .active-iteration { background: #39225c; color: #efe6ff; }
 .plot-initial { color: #c0a4ff; }
 .plot-surface { background: #130e1e; }
+.math-editor math-field {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  padding: .4rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: .55rem;
+  background: #130e1e;
+  color: #f9f6ff;
+  font-size: 1.15rem;
+}
 
 /* Custom scrollbar for tables and code blocks */
 ::-webkit-scrollbar {

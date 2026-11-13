@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, Check, Sparkles } from 'lucide-react';
 import { expressionMathML, getSymbolicDerivative } from '../utils/mathParser';
+import { VisualEquation } from './VisualEquation';
 
 interface MathInputProps {
   expression: string;
@@ -24,6 +25,7 @@ export const MathInput: React.FC<MathInputProps> = ({
   showDerivativeSection,
 }) => {
   const input = React.useRef<HTMLInputElement>(null);
+  const [visual, setVisual] = React.useState(false);
   const preview = React.useMemo(() => {
     if (syntaxError) return null;
     try {
@@ -122,6 +124,11 @@ export const MathInput: React.FC<MathInputProps> = ({
         )}
       </div>
 
+      <div>
+        <button type="button" aria-expanded={visual} className="text-sm font-bold text-sky-800"
+          onClick={() => setVisual((open) => !open)}>ویرایشگر دیداری فرمول</button>
+        {visual && <VisualEquation onApply={setExpression} />}
+      </div>
       {/* Quick Insert Keypad */}
       <div>
         <div className="text-xs text-slate-500 mb-1.5 flex flex-wrap items-center justify-between gap-x-2">

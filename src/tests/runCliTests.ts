@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { solveNewtonRaphson } from '../algorithms/newtonRaphson';
 import { compileExpression, expressionMathML, normalizeDigits } from '../utils/mathParser';
 import { runAutomatedTests } from './numericalTests';
+import { interpolate } from '../utils/interpolation';
 
 console.log('Running numerical analysis test suite...');
 const summary = runAutomatedTests();
@@ -44,5 +45,10 @@ if (summary.failed > 0) {
   });
   assert.equal(result.status, 'nan_encountered');
   assert.equal(result.residual, null);
+  const points = [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 7 }];
+  assert.equal(interpolate(points, 1.5).value, 4.75);
+  assert.equal(interpolate(points, 3).value, 13);
+  assert.equal(interpolate(points, 3).outside, true);
+  assert.throws(() => interpolate([points[0], points[0]], 1));
   console.log('\nNumerical, expression and invalid-domain checks passed.');
 }

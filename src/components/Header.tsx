@@ -2,7 +2,7 @@ import React from 'react';
 import { Calculator, BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
-  activeTab: 'solver' | 'benchmarks' | 'tests' | 'guide';
+  activeTab: 'solver' | 'benchmarks' | 'tests' | 'guide' | 'panel' | 'interpolation';
   setActiveTab: (tab: 'solver' | 'benchmarks' | 'tests' | 'guide') => void;
   onQuickSolve: () => void;
 }
