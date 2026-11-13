@@ -8,7 +8,7 @@ const fields = 'w-full rounded-lg border border-slate-300 px-3 py-2';
 const button = 'rounded-lg bg-sky-600 px-4 py-2 font-bold text-white disabled:opacity-50';
 
 export function AccountPanel() {
-  const [link] = useState(() => location.hash.match(/^#panel\/(student|teacher|login)\/([A-Za-z0-9_-]{32})$/));
+  const [link, setLink] = useState(() => location.hash.match(/^#panel\/(student|teacher|login)\/([A-Za-z0-9_-]{32})$/));
   const [account, setAccount] = useState<Account | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [finished, setFinished] = useState(false);
@@ -17,11 +17,20 @@ export function AccountPanel() {
   const mode = link?.[1];
   const registering = mode === 'student' || mode === 'teacher';
   useEffect(() => {
+    const readLink = () => {
+      const next = location.hash.match(/^#panel\/(student|teacher|login)\/([A-Za-z0-9_-]{32})$/);
+      if (next) { setLink(next); setFinished(false); setError(''); }
+    };
+    window.addEventListener('hashchange', readLink);
+    return () => window.removeEventListener('hashchange', readLink);
+  }, []);
+  useEffect(() => {
     if (link) history.replaceState(null, '', location.pathname + location.search + '#panel');
+    let current = true;
     portal<{ profile: Account | null; enabled: boolean }>().then((data) => {
-      setAccount(data.profile);
-      setEnabled(data.enabled);
-    }).catch((error: Error) => { setEnabled(false); setError(error.message); });
+      if (current) { setAccount(data.profile); setEnabled(data.enabled); }
+    }).catch((error: Error) => { if (current) { setEnabled(false); setError(error.message); } });
+    return () => { current = false; };
   }, [link]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -34,7 +43,12 @@ export function AccountPanel() {
       await portal({ ...values, action: registering ? 'register' : 'login', ticket: link?.[2] });
       form.reset();
       if (registering) setFinished(true);
-      else setAccount((await portal<{ profile: Account }>()).profile);
+      else {
+        const { profile } = await portal<{ profile: Account | null }>();
+        if (!profile) throw new Error('نشست ورود برقرار نشد. از ربات لینک تازه بگیرید.');
+        setAccount(profile);
+        setLink(null);
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'درخواست انجام نشد.');
     } finally { setBusy(false); }
@@ -42,7 +56,7 @@ export function AccountPanel() {
 
   return <section className="solver-panel mx-auto max-w-3xl space-y-5 p-5 sm:p-8">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-xl font-black">{account ? (account.role === 'teacher' ? 'پنل استاد' : 'پنل دانشجو') : registering ? 'ساخت حساب' : 'ورود به پنل'}</h1>
+      <h1 className="text-xl font-black">{account ? (account.role === 'teacher' ? 'پنل مدیریت آزمون استاد' : 'پنل دانشجو') : registering && !finished ? (mode === 'student' ? 'ساخت حساب دانشجو' : 'فعال‌سازی حساب استاد') : 'ورود به پنل نامرالب'}</h1>
       {account && <button type="button" className="rounded-lg border border-slate-300 px-3 py-1" onClick={async () => {
         try { await portal({ action: 'logout' }); setAccount(null); setFinished(true); }
         catch (error) { setError((error as Error).message); }
@@ -50,7 +64,7 @@ export function AccountPanel() {
     </div>
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-700">{error}</p>}
     {account ? <>
-      <p className="text-slate-600">{account.first_name} {account.last_name}</p>
+      <p className="text-slate-600">{account.first_name} {account.last_name} · <bdi>{account.username}</bdi></p>
       <QuizPanel role={account.role} />
     </> : enabled === null ? <p>در حال بررسی وضعیت پنل…</p> : !enabled ? (
       <p className="text-slate-600">سامانهٔ حساب‌ها هنوز فعال نشده است.</p>
@@ -69,10 +83,29 @@ export function AccountPanel() {
         <label className="block">رمز عبور<input name="password" type="password" dir="ltr" autoComplete={registering ? 'new-password' : 'current-password'} minLength={12} maxLength={72} required className={fields} /></label>
         {registering && <p className="text-sm text-slate-600">نام کاربری را انگلیسی و رمز را حداقل ۱۲ نویسه انتخاب کنید.</p>}
         <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : registering ? 'ساخت حساب' : 'ورود'}</button>
+        <a className="ms-4 text-sky-800" href={bot + '?start=' + (registering ? mode : 'login')}>گرفتن لینک تازه از ربات</a>
       </form>
     ) : <>
-      <p className="text-slate-600">{finished && registering ? 'حساب ساخته شد. برای دریافت لینک ورود، دستور /panel را در ربات بفرستید.' : 'برای ورود، دستور /panel را در ربات بفرستید. برای ثبت‌نام، دعوت یک‌بارمصرف را از مدیر گروه بگیرید.'}</p>
-      <a className={button + ' inline-block'} href={bot}>باز کردن ربات تلگرام ↗</a>
+      {finished && registering && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">حساب ساخته شد. حالا از دکمهٔ ورود، لینک تازه بگیرید.</p>}
+      <div className="space-y-3">
+        <div className="rounded-xl bg-slate-50 p-4">
+          <h2 className="font-bold">حساب دارم</h2>
+          <p className="mb-3 mt-1 text-sm text-slate-600">از ربات لینک ورود بگیرید و سپس نام کاربری و رمز را در فرم سایت وارد کنید.</p>
+          <a className={button + ' inline-block'} href={bot + '?start=login'}>گرفتن لینک ورود از تلگرام ↗</a>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <h2 className="font-bold">دانشجوی ورودی ۴۰۴ هستم</h2>
+            <p className="my-2 text-sm text-slate-600">شناسهٔ تلگرام و شمارهٔ دانشجویی را به مدیر گروه بدهید. پس از تأیید، همین دکمه فرم ثبت‌نام را از ربات می‌گیرد.</p>
+            <a className="font-bold text-sky-800" href={bot + '?start=student'}>شروع ثبت‌نام دانشجو ↗</a>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-4">
+            <h2 className="font-bold">استاد هستم</h2>
+            <p className="my-2 text-sm text-slate-600">شناسهٔ تلگرام را به مدیر سامانه بدهید تا دعوت صادر کند. پس از فعال‌سازی، از همین پنل آزمون بسازید.</p>
+            <a className="font-bold text-sky-800" href={bot + '?start=teacher'}>فعال‌سازی حساب استاد ↗</a>
+          </div>
+        </div>
+      </div>
     </>}
   </section>;
 }

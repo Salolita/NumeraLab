@@ -18,7 +18,7 @@ export async function quizAction(action: string, body: Record<string, unknown>, 
       ...quiz, content: quiz.content.map(({ prompt, options }) => ({ prompt, options })),
     })), results };
   }
-  if (action === 'quiz:create' && teacher) {
+  if ((action === 'quiz:create' || action === 'quiz:update') && teacher) {
     const title = field(body, 'title').trim();
     const questions = body.questions as Question[];
     const audience = [...new Set(field(body, 'audience').toLowerCase().split(/[\s,،]+/).filter(Boolean))];
@@ -33,7 +33,17 @@ export async function quizAction(action: string, body: Record<string, unknown>, 
         || !Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3)) {
       throw new PortalError(422, 'عنوان، مراحل و چهار گزینهٔ متفاوت برای هر مرحله را وارد کنید.');
     }
-    await write('portal_quizzes', 'POST', { owner_id: profile.id, title, audience, content: questions.map(({ prompt, options, correct }) => ({ prompt, options, correct })) });
+    const content = questions.map(({ prompt, options, correct }) => ({ prompt, options, correct }));
+    if (action === 'quiz:update') {
+      const id = field(body, 'id');
+      if (!uuidPattern.test(id)) throw new PortalError(422, 'آزمون معتبر نیست.');
+      const updated = await write<{ id: string }[]>('portal_quizzes', 'PATCH', { title, audience, content }, {
+        id: `eq.${id}`, ...own, published: 'eq.false', select: 'id',
+      });
+      if (!updated.length) throw new PortalError(409, 'فقط پیش‌نویس‌های خودتان قابل ویرایش‌اند.');
+    } else {
+      await write('portal_quizzes', 'POST', { owner_id: profile.id, title, audience, content });
+    }
     return { ok: true };
   }
 
@@ -56,7 +66,16 @@ export async function quizAction(action: string, body: Record<string, unknown>, 
       throw new PortalError(422, 'برای همهٔ مرحله‌ها گزینه انتخاب کنید.');
     }
     const score = quiz.content.reduce((total, question, index) => total + Number(question.correct === answers[index]), 0);
-    await write('portal_submissions', 'POST', { quiz_id: id, student_id: profile.id, answers, score });
+    try {
+      await write('portal_submissions', 'POST', { quiz_id: id, student_id: profile.id, answers, score });
+    } catch (error) {
+      if (!(error instanceof PortalError) || error.status !== 409) throw error;
+      const [saved] = await query<{ score: number }[]>('portal_submissions', {
+        quiz_id: `eq.${id}`, student_id: `eq.${profile.id}`, select: 'score', limit: '1',
+      });
+      if (!saved) throw error;
+      return { score: saved.score };
+    }
     return { score };
   }
   throw new PortalError(403, 'دسترسی به این عملیات مجاز نیست.');

@@ -14,6 +14,9 @@ export function QuizPanel({ role }: { role: 'student' | 'teacher' }) {
   const [count, setCount] = useState(2);
   const [title, setTitle] = useState('');
   const [sample, setSample] = useState<'bisection' | 'matlab' | null>(null);
+  const [editing, setEditing] = useState<Quiz | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [notice, setNotice] = useState('');
   const [formVersion, setFormVersion] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,6 +30,7 @@ export function QuizPanel({ role }: { role: 'student' | 'teacher' }) {
 
   async function perform(action: () => Promise<void>) {
     setError('');
+    setNotice('');
     setBusy(true);
     try { await action(); } catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
@@ -41,8 +45,9 @@ export function QuizPanel({ role }: { role: 'student' | 'teacher' }) {
       correct: Number(data.get(`correct-${index}`)),
     }));
     void perform(async () => {
-      await portal({ action: 'quiz:create', title, questions, audience: data.get('audience') });
-      setTitle(''); setSample(null); setFormVersion((version) => version + 1);
+      await portal({ action: editing ? 'quiz:update' : 'quiz:create', id: editing?.id, title, questions, audience: data.get('audience') });
+      setNotice('پیش‌نویس ذخیره شد. برای نمایش به دانشجویان، دکمهٔ انتشار آزمون را بزنید.');
+      setTitle(''); setSample(null); setEditing(null); setCount(2); setEditorOpen(false); setFormVersion((version) => version + 1);
       await load();
     });
   }
@@ -53,32 +58,39 @@ export function QuizPanel({ role }: { role: 'student' | 'teacher' }) {
   ];
   const matlabExample = { prompt: 'در روش دونیم‌سازی، کدام دستور MATLAB نقطهٔ میانی بازه را در c قرار می‌دهد؟',
     options: ['c = (a + b) / 2;', 'c = (b - a) / 2;', 'c = a + b / 2;', 'c = a * b / 2;'] };
-  const template = sample === 'matlab' ? [matlabExample] : sample === 'bisection' ? examples : [];
+  const template = editing?.content ?? (sample === 'matlab' ? [matlabExample] : sample === 'bisection' ? examples : []);
   return <section className="space-y-4" aria-labelledby="quiz-heading">
     <h2 id="quiz-heading" className="text-lg font-bold">آزمون‌های مرحله‌ای</h2>
     {error && <p role="alert" className="text-rose-700">{error}</p>}
-    {role === 'teacher' && <details className="rounded-xl border border-slate-200 p-4">
-      <summary className="cursor-pointer font-bold">ساخت آزمون</summary>
+    {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">{notice}</p>}
+    {role === 'teacher' && <details open={editorOpen} onToggle={(event) => setEditorOpen(event.currentTarget.open)} className="rounded-xl border border-slate-200 p-4">
+      <summary className="cursor-pointer font-bold">{editing ? 'ویرایش پیش‌نویس' : 'ساخت آزمون جدید'}</summary>
       <form className="mt-4 space-y-4" onSubmit={create} key={formVersion}>
+        <p className="text-sm text-slate-600">عنوان و نام‌های کاربری دانشجویان را وارد کنید. برای هر مرحله چهار گزینه و یک پاسخ درست تعیین کنید. پس از ذخیره، پیش‌نویس را منتشر کنید.</p>
+        {!editing && <div className="flex flex-wrap gap-2">
         <button type="button" className={button} onClick={() => {
           setCount(2); setTitle('نمونهٔ دونیم‌سازی'); setSample('bisection'); setFormVersion((version) => version + 1);
         }}>بارگذاری نمونهٔ دونیم‌سازی</button>
         <button type="button" className={button + ' ms-2'} onClick={() => {
           setCount(1); setTitle('نمونهٔ MATLAB'); setSample('matlab'); setFormVersion((version) => version + 1);
         }}>بارگذاری نمونهٔ MATLAB</button>
+        </div>}
         <label className="block">عنوان<input className={input} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required /></label>
-        <label className="block">نام‌های کاربری دانشجویان مجاز<textarea dir="ltr" name="audience" className={input} placeholder="student_1, student_2" maxLength={3300} required /></label>
+        <label className="block">نام‌های کاربری دانشجویان مجاز<textarea dir="ltr" name="audience" className={input} placeholder="student_1, student_2" maxLength={3300} defaultValue={editing?.audience?.join(', ')} required /></label>
         {Array.from({ length: count }, (_, index) => <fieldset className="space-y-2 rounded-lg bg-slate-50 p-3" key={index}>
           <legend>مرحلهٔ {index + 1}</legend>
           <label className="block">متن مرحله<textarea name={`prompt-${index}`} className={input} maxLength={1000} required defaultValue={template[index]?.prompt} /></label>
           <div className="grid gap-2 sm:grid-cols-2">{Array.from({ length: 4 }, (_, option) =>
             <label key={option}>گزینهٔ {option + 1}<input name={`option-${index}-${option}`} className={input} maxLength={200} required defaultValue={template[index]?.options[option]} /></label>)}</div>
-          <label className="block">گزینهٔ صحیح<select className={input} name={`correct-${index}`}>{[0, 1, 2, 3].map((option) => <option value={option} key={option}>{option + 1}</option>)}</select></label>
+          <label className="block">گزینهٔ صحیح<select className={input} name={`correct-${index}`} defaultValue={editing?.content[index]?.correct ?? 0}>{[0, 1, 2, 3].map((option) => <option value={option} key={option}>{option + 1}</option>)}</select></label>
         </fieldset>)}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={button} disabled={count >= 15} onClick={() => setCount(count + 1)}>افزودن مرحله</button>
           <button type="button" className={button} disabled={count <= 1} onClick={() => setCount(count - 1)}>حذف مرحلهٔ آخر</button>
           <button className={button} disabled={busy}>ذخیرهٔ پیش‌نویس</button>
+          {editing && <button type="button" className={button} onClick={() => {
+            setEditing(null); setTitle(''); setCount(2); setFormVersion((version) => version + 1);
+          }}>انصراف از ویرایش</button>}
         </div>
       </form>
     </details>}
@@ -88,7 +100,14 @@ export function QuizPanel({ role }: { role: 'student' | 'teacher' }) {
       {role === 'teacher' ? <>
         <p className="text-sm text-slate-600">{quiz.published ? 'منتشر شده' : 'پیش‌نویس'} · {quiz.audience?.length ?? 0} دانشجوی مجاز</p>
         <div className="flex flex-wrap gap-2">
-          {!quiz.published && <button className={button} disabled={busy} onClick={() => void perform(async () => { await portal({ action: 'quiz:publish', id: quiz.id }); await load(); })}>انتشار آزمون</button>}
+          {!quiz.published && <>
+            <button className={button} disabled={busy} onClick={() => {
+              setEditing(quiz); setTitle(quiz.title); setSample(null); setCount(quiz.content.length); setFormVersion((version) => version + 1); setEditorOpen(true);
+            }}>ویرایش پیش‌نویس</button>
+            <button className={button} disabled={busy || editing?.id === quiz.id} onClick={() => void perform(async () => {
+              await portal({ action: 'quiz:publish', id: quiz.id }); await load(); setNotice('آزمون برای دانشجویان مشخص‌شده منتشر شد.');
+            })}>انتشار آزمون</button>
+          </>}
           <button className={button} disabled={busy} onClick={() => void perform(async () => {
             const data = await portal<{ results: Result[] }>({ action: 'quiz:results', id: quiz.id });
             setResults({ id: quiz.id, rows: data.results });
