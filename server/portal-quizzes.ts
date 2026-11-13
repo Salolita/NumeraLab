@@ -1,4 +1,4 @@
-import { field, limit, PortalError, query, uuidPattern, write, type Profile } from './portal-store';
+import { field, limit, PortalError, query, uuidPattern, write, type Profile } from './portal-store.js';
 
 interface Question { prompt: string; options: string[]; correct: number }
 interface Quiz { id: string; title: string; published: boolean; content: Question[]; audience?: string[] }

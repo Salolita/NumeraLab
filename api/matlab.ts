@@ -1,5 +1,5 @@
-import { currentProfile, limit, PortalError, readBody, reply, setting } from '../server/portal-store';
-import { isInterpolationInput } from '../src/utils/interpolation';
+import { currentProfile, limit, PortalError, readBody, reply, setting } from '../server/portal-store.js';
+import { isInterpolationInput } from '../src/utils/interpolation.js';
 
 export default {
   async fetch(request: Request) {

@@ -1,9 +1,9 @@
 import {
   cookieValue, currentProfile, digest, field, internalEmail, limit, PortalError,
   query, readBody, reply, rpc, setting, studentNumber, supabase, token, tokenPattern, write,
-} from '../server/portal-store';
-import { eligibleStudent, telegramWebhook } from '../server/portal-bot';
-import { quizAction } from '../server/portal-quizzes';
+} from '../server/portal-store.js';
+import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
+import { quizAction } from '../server/portal-quizzes.js';
 
 interface Ticket {
   invite_hash: string | null;

@@ -1,4 +1,4 @@
-import { digest, equalSecret, limit, PortalError, query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern, write } from './portal-store';
+import { digest, equalSecret, limit, PortalError, query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern, write } from './portal-store.js';
 
 async function send(chatId: string, message: string) {
   const response = await fetch(`https://api.telegram.org/bot${setting('TELEGRAM_BOT_TOKEN')}/sendMessage`, {
