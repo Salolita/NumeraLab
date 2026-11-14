@@ -11,6 +11,10 @@ export class PortalError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
 
+export class AuthAccountExists extends PortalError {
+  constructor() { super(409, 'این نام کاربری قبلاً ثبت شده است.'); }
+}
+
 export function setting(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new PortalError(503, 'سامانهٔ حساب‌ها هنوز راه‌اندازی نشده است.');
@@ -32,8 +36,12 @@ export async function supabase<T>(path: string, method = 'GET', body?: unknown, 
     if (response.status === 409) throw new PortalError(409, 'این درخواست قبلاً ثبت شده یا یکی از مشخصات تکراری است.');
     if (response.status === 429) throw new PortalError(429, 'تعداد تلاش‌ها زیاد است. چند دقیقه دیگر دوباره امتحان کنید.');
     if (path.startsWith('/auth/v1/token?') && [400, 401].includes(response.status)) throw new PortalError(401, 'نام کاربری یا رمز عبور معتبر نیست.');
-    if (path === '/auth/v1/admin/users' && [400, 422, 500].includes(response.status)) {
-      throw new PortalError(422, 'حساب ساخته نشد. اطلاعات، نام کاربری و اعتبار لینک را بررسی کنید.');
+    if (path === '/auth/v1/admin/users' && method === 'POST' && [400, 422].includes(response.status)) {
+      const failure = await response.json().catch(() => null);
+      const code = failure?.error_code ?? failure?.code;
+      if (code === 'email_exists' || code === 'user_already_exists') throw new AuthAccountExists();
+      if (code === 'weak_password') throw new PortalError(422, 'رمز قوی‌تری با ترکیب حروف، عدد و نشانه انتخاب کنید.');
+      throw new PortalError(422, 'اطلاعات حساب پذیرفته نشد. نام کاربری و رمز را بررسی کنید.');
     }
     throw new PortalError(503, 'ارتباط با سامانهٔ حساب‌ها برقرار نشد.');
   }
@@ -54,6 +62,15 @@ export async function limit(bucket: string, max: number) {
   if (!await rpc<boolean>('portal_rate_limit', { p_bucket: digest(bucket), p_limit: max })) {
     throw new PortalError(429, 'تعداد تلاش‌ها زیاد است. چند دقیقه دیگر دوباره امتحان کنید.');
   }
+}
+
+export async function verifyPassword(username: string, password: string) {
+  const auth = await supabase<{ user: { id: string }; access_token: string }>('/auth/v1/token?grant_type=password', 'POST', {
+    email: internalEmail(username), password,
+  }, true);
+  // The portal manages its own sessions, so revoke the Supabase refresh token.
+  await supabase('/auth/v1/logout?scope=local', 'POST', undefined, true, auth.access_token);
+  return auth.user.id;
 }
 
 export interface Profile {

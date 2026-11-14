@@ -1,4 +1,6 @@
-import { query, setting, uuidPattern, write } from './portal-store.js';
+import {
+  AuthAccountExists, internalEmail, limit, PortalError, query, setting, supabase, uuidPattern, verifyPassword, write,
+} from './portal-store.js';
 
 export interface StudentRequest {
   id: string;
@@ -9,6 +11,44 @@ export interface StudentRequest {
 }
 export const admins = () => [...new Set(setting('TELEGRAM_ADMIN_IDS').split(',').map((id) => id.trim()).filter((id) => /^[1-9]\d{0,15}$/.test(id)))];
 export const studentFields = 'id,first_name,last_name,student_number,telegram_id';
+
+type Application = Omit<StudentRequest, 'id'> & { username: string; birth_date: string; phone: string };
+
+export async function queueStudent(application: Application, password: string) {
+  const { username } = application;
+  let created: { id: string };
+  try {
+    created = await supabase('/auth/v1/admin/users', 'POST', {
+      email: internalEmail(username), password, email_confirm: true,
+      app_metadata: { portal_student_request: application },
+    });
+  } catch (error) {
+    if (!(error instanceof AuthAccountExists)) throw error;
+    await limit(`login:username:${username}`, 10);
+    const id = await verifyPassword(username, password).catch((failure) => {
+      if (failure instanceof PortalError && failure.status === 401) {
+        throw new PortalError(409, 'این نام کاربری قبلاً ثبت شده است. اگر ثبت‌نام را قبلاً شروع کرده‌اید، همان رمز قبلی را وارد کنید.');
+      }
+      throw failure;
+    });
+    const [existing] = await query<{ role: string; review_status: string }[]>('portal_profiles', {
+      id: `eq.${id}`, select: 'role,review_status',
+    });
+    if (existing?.role === 'student' && existing.review_status === 'pending') return null;
+    if (existing?.role === 'student' && existing.review_status === 'rejected') {
+      throw new PortalError(403, 'درخواست قبلی لغو شده است. برای پیگیری با مدیر گروه تماس بگیرید.');
+    }
+    if (existing) throw new PortalError(409, 'حساب قبلاً ساخته شده است. از بخش ورود استفاده کنید.');
+    // Complete older sign-ups only after proving ownership of the existing credentials.
+    const [student] = await write<StudentRequest[]>('portal_profiles', 'POST', {
+      id, ...application, role: 'student', active: false, review_status: 'pending',
+    }, { select: studentFields });
+    return student;
+  }
+  const [student] = await query<StudentRequest[]>('portal_profiles', { id: `eq.${created.id}`, select: studentFields });
+  if (!student) throw new PortalError(503, 'ثبت درخواست کامل نشد. با همان نام کاربری و رمز دوباره تلاش کنید.');
+  return student;
+}
 
 async function telegram(method: string, body: object) {
   const response = await fetch(`https://api.telegram.org/bot${setting('TELEGRAM_BOT_TOKEN')}/${method}`, {

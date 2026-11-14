@@ -1,11 +1,11 @@
 import {
   cookieValue, currentProfile, digest, field, internalEmail, limit, PortalError,
-  query, readBody, reply, rpc, setting, studentNumber, supabase, token, write,
+  query, readBody, reply, rpc, setting, studentNumber, supabase, token, verifyPassword, write,
 } from '../server/portal-store.js';
 import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
 import { telegramIdentity } from '../server/telegram-identity.js';
-import { admins, notifyReview, studentFields, type StudentRequest } from '../server/student-review.js';
+import { admins, notifyReview, queueStudent } from '../server/student-review.js';
 
 export default {
   async fetch(request: Request) {
@@ -63,14 +63,9 @@ export default {
             && parsedDate.toISOString().slice(0, 10) === date && date >= '1900-01-01' && date < new Date().toISOString().slice(0, 10);
           if (!eligibleStudent(number)) throw new PortalError(422, 'شمارهٔ دانشجویی برای این ثبت‌نام معتبر نیست.');
           if (!/^\+?[0-9]{10,15}$/.test(phone) || !validDate) throw new PortalError(422, 'شمارهٔ تماس و تاریخ تولد را بررسی کنید.');
-          const created = await supabase<{ id: string }>('/auth/v1/admin/users', 'POST', {
-            email: internalEmail(username), password, email_confirm: true,
-            app_metadata: { portal_student_request: { ...profile, student_number: number, birth_date: date, phone, telegram_id: telegram } },
-          });
-          const [student] = await query<StudentRequest[]>('portal_profiles', { id: `eq.${created.id}`, select: studentFields });
-          if (!student) throw new PortalError(503, 'ثبت درخواست تأیید نشد. با مدیر گروه تماس بگیرید.');
-          const notified = await notifyReview(student);
-          return reply({ registered: true, pending: true, notified }, 201);
+          const student = await queueStudent({ ...profile, student_number: number, birth_date: date, phone, telegram_id: telegram }, password);
+          const notified = student ? await notifyReview(student) : true;
+          return reply({ registered: true, pending: true, notified }, student ? 201 : 200);
         }
 
         const [invite] = await query<{ code_hash: string }[]>('portal_invites', {
@@ -96,14 +91,9 @@ export default {
       await limit(`login:ip:${ip}`, 35);
       await limit(`login:username:${username}`, 10);
       const invalid = 'نام کاربری یا رمز عبور معتبر نیست.';
-      const auth = await supabase<{ user: { id: string }; access_token: string }>('/auth/v1/token?grant_type=password', 'POST', {
-        email: internalEmail(username), password,
-      }, true);
-      // Supabase Auth verifies the password. The portal issues its own revocable session.
-      // End the upstream session so its refresh token does not remain usable.
-      await supabase('/auth/v1/logout?scope=local', 'POST', undefined, true, auth.access_token);
+      const id = await verifyPassword(username, password);
       const [expected] = await query<{ id: string; active: boolean; review_status: string }[]>('portal_profiles', {
-        id: `eq.${auth.user.id}`, username: `eq.${username}`, select: 'id,active,review_status', limit: '1',
+        id: `eq.${id}`, username: `eq.${username}`, select: 'id,active,review_status', limit: '1',
       });
       if (!expected?.active) {
         if (expected?.review_status === 'pending') throw new PortalError(403, 'درخواست شما در انتظار تأیید مدیر است.');
