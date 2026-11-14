@@ -60,7 +60,7 @@ export function AccountPanel() {
         <button className={button} disabled={busy}>{busy ? 'در حال ورود…' : 'ورود'}</button>
       </form>
       <div className="flex flex-wrap gap-4 border-t border-slate-200 pt-4 text-sm">
-        <a className="font-bold text-sky-800" href={bot + '?start=student'}>ثبت‌نام دانشجو (ورودی ۴۰۴) ↗</a>
+        <a className="font-bold text-sky-800" href="/register.html?role=student">ثبت‌نام دانشجو (ورودی ۴۰۴)</a>
         <a className="font-bold text-sky-800" href={bot + '?start=teacher'}>فعال‌سازی حساب استاد ↗</a>
       </div>
       </>
