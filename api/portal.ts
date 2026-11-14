@@ -5,7 +5,8 @@ import {
 import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
 import { telegramIdentity } from '../server/telegram-identity.js';
-import { admins, notifyReview, queueAccount } from '../server/account-review.js';
+import { admins, notifyReview, queueAccount, reviewStatusText } from '../server/account-review.js';
+import { panelButton, telegram as sendTelegram } from '../server/telegram-delivery.js';
 
 export default {
   async fetch(request: Request) {
@@ -31,7 +32,7 @@ export default {
         if (!profile) throw new PortalError(401, 'ابتدا وارد پنل شوید.');
         return reply(await quizAction(action, body, profile));
       }
-      if (action !== 'register' && action !== 'login') throw new PortalError(400, 'درخواست معتبر نیست.');
+      if (action !== 'register' && action !== 'login' && action !== 'link-telegram') throw new PortalError(400, 'درخواست معتبر نیست.');
 
       const username = field(body, 'username').trim().toLowerCase();
       const password = field(body, 'password');
@@ -82,9 +83,27 @@ export default {
       await limit(`login:username:${username}`, 10);
       const invalid = 'نام کاربری یا رمز عبور معتبر نیست.';
       const id = await verifyPassword(username, password);
-      const [expected] = await query<{ id: string; active: boolean; review_status: string }[]>('portal_profiles', {
-        id: `eq.${id}`, username: `eq.${username}`, select: 'id,active,review_status', limit: '1',
+      type LoginProfile = { id: string; active: boolean; review_status: keyof typeof reviewStatusText; telegram_id: string | null };
+      let [expected] = await query<LoginProfile[]>('portal_profiles', {
+        id: `eq.${id}`, username: `eq.${username}`, select: 'id,active,review_status,telegram_id', limit: '1',
       });
+      if (action === 'link-telegram') {
+        const chat = telegramIdentity(field(body, 'telegramInitData'));
+        if (!expected) throw new PortalError(404, 'ابتدا ثبت‌نام را کامل کنید.');
+        if (expected.telegram_id !== chat) {
+          if (expected.telegram_id) throw new PortalError(409, 'این حساب قبلاً به یک تلگرام متصل شده است.');
+          const [linked] = await write<LoginProfile[]>('portal_profiles', 'PATCH', { telegram_id: chat }, {
+            id: `eq.${id}`, telegram_id: 'is.null', select: 'id,active,review_status,telegram_id',
+          });
+          if (!linked) throw new PortalError(409, 'اتصال هم‌زمان انجام شد. وضعیت حساب را در ربات بررسی کنید.');
+          expected = linked;
+        }
+        const status = expected.review_status === 'approved' && !expected.active
+          ? 'حساب در حال حاضر غیرفعال است.' : reviewStatusText[expected.review_status];
+        const notified = await sendTelegram('sendMessage', { chat_id: chat, text: status, reply_markup: panelButton() })
+          .then(() => true, () => false);
+        return reply({ status, notified });
+      }
       if (!expected?.active) {
         if (expected?.review_status === 'pending') throw new PortalError(403, 'درخواست شما در انتظار تأیید مدیر است.');
         if (expected?.review_status === 'rejected') throw new PortalError(403, 'درخواست شما لغو شده است. با مدیر گروه تماس بگیرید.');

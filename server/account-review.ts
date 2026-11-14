@@ -1,6 +1,7 @@
 import {
   AuthAccountExists, internalEmail, limit, PortalError, query, setting, supabase, uuidPattern, verifyPassword, write,
 } from './portal-store.js';
+import { panelButton, telegram } from './telegram-delivery.js';
 
 type AccountRole = 'student' | 'teacher';
 
@@ -56,13 +57,11 @@ export async function queueAccount(application: Application, password: string) {
   return account;
 }
 
-async function telegram(method: string, body: object) {
-  const response = await fetch(`https://api.telegram.org/bot${setting('TELEGRAM_BOT_TOKEN')}/${method}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!response.ok || !(await response.json()).ok) throw new Error('Telegram delivery failed');
-}
+export const reviewStatusText = {
+  approved: 'حسابتان تأیید شد. از سایت وارد شوید.',
+  pending: 'درخواست ثبت‌نام شما در انتظار تأیید مدیر است.',
+  rejected: 'درخواست حساب لغو شد. برای پیگیری با مدیر گروه تماس بگیرید.',
+};
 
 function reviewText(account: AccountRequest) {
   const teacher = account.role === 'teacher';
@@ -113,16 +112,24 @@ export async function decideReview(callback: ReviewCallback) {
   const [account] = await write<AccountRequest[]>('portal_profiles', 'PATCH', {
     active: approved, review_status: approved ? 'approved' : 'rejected',
   }, { id: `eq.${id}`, review_status: 'eq.pending', select: requestFields });
-  const status = account ? approved ? 'حساب تأیید شد.' : 'درخواست لغو شد.' : 'این درخواست قبلاً بررسی شده است.';
+  let status = account ? approved ? 'حساب تأیید شد.' : 'درخواست لغو شد.' : 'این درخواست قبلاً بررسی شده است.';
+  if (account?.telegram_id) {
+    try {
+      await telegram('sendMessage', {
+        chat_id: account.telegram_id, text: reviewStatusText[approved ? 'approved' : 'rejected'],
+        ...(approved ? { reply_markup: panelButton() } : {}),
+      });
+    } catch {
+      status += ' ارسال پیام تلگرام ناموفق بود. کاربر می‌تواند وضعیت حساب را در ربات ببیند.';
+    }
+  } else if (account) {
+    status += ' حساب به تلگرام متصل نیست.';
+  }
   await Promise.allSettled([
     answer(status),
     telegram('editMessageText', {
       chat_id: chat.id, message_id: callback.message?.message_id,
       text: account ? `${reviewText(account)}\n\n${status}` : status, reply_markup: { inline_keyboard: [] },
     }),
-    ...(account?.telegram_id ? [telegram('sendMessage', { chat_id: account.telegram_id,
-      text: approved ? 'حسابتان تأیید شد. از سایت وارد شوید.' : 'درخواست حساب لغو شد. برای پیگیری با مدیر گروه تماس بگیرید.',
-      ...(approved ? { reply_markup: { inline_keyboard: [[{ text: 'ورود به نامرالب', url: setting('PORTAL_ORIGIN') + '/#panel' }]] } } : {}),
-    })] : []),
   ]);
 }

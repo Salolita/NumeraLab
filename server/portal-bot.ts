@@ -1,9 +1,10 @@
 import { equalSecret, limit, PortalError, query, readBody, reply, setting } from './portal-store.js';
-import { admins, decideReview, pendingReviews, type ReviewCallback } from './account-review.js';
+import { admins, decideReview, pendingReviews, reviewStatusText, type ReviewCallback } from './account-review.js';
 
 const labels = {
   login: 'ورود به پنل', student: 'ساخت حساب دانشجو', teacher: 'ساخت حساب استاد', legacyTeacher: 'فعال‌سازی حساب استاد',
-  id: 'شناسهٔ تلگرام من', help: 'راهنما', inviteStudent: 'دعوت دانشجو', inviteTeacher: 'دعوت استاد',
+  id: 'شناسهٔ تلگرام من', help: 'راهنما', status: 'وضعیت حساب و اتصال تلگرام', inviteStudent: 'دعوت دانشجو', inviteTeacher: 'دعوت استاد',
+  quizzes: 'آزمون‌ها',
 };
 
 type Markup = { keyboard: { text: string }[][]; resize_keyboard: boolean; is_persistent: boolean }
@@ -40,7 +41,7 @@ export async function telegramWebhook(request: Request) {
   const text = message.text.trim();
   const [command, input] = text.split(/\s+/, 3);
   const isAdmin = admins().includes(id);
-  const rows = [[labels.login], [labels.student, labels.teacher], [labels.id, labels.help]];
+  const rows = [[labels.login, labels.quizzes], [labels.student, labels.teacher], [labels.status], [labels.id, labels.help]];
   if (isAdmin) rows.push(['درخواست‌های ثبت‌نام']);
   const menu: Markup = { keyboard: rows.map((row) => row.map((label) => ({ text: label }))), resize_keyboard: true, is_persistent: true };
   const sendMenu = () => send(id, 'نوع حساب را انتخاب کنید و پس از ارسال فرم منتظر تصمیم مدیر بمانید. اگر حساب دارید، از سایت وارد شوید.', {
@@ -56,6 +57,22 @@ export async function telegramWebhook(request: Request) {
     } else if (text === labels.student || text === labels.teacher || text === labels.legacyTeacher || (command === '/start' && ['student', 'teacher'].includes(input))) {
       const role = text === labels.teacher || text === labels.legacyTeacher || input === 'teacher' ? 'teacher' : 'student';
       await send(id, 'فرم ساخت حساب را همین‌جا در تلگرام باز کنید.', { inline_keyboard: [[signupButton(role)]] });
+    } else if (command === '/status' || text === labels.status || (command === '/start' && input === 'link')) {
+      const [profile] = await query<{ active: boolean; review_status: keyof typeof reviewStatusText }[]>('portal_profiles', {
+        telegram_id: `eq.${id}`, select: 'active,review_status', limit: '1',
+      });
+      if (profile) {
+        await send(id, profile.review_status === 'approved' && !profile.active
+          ? 'حساب در حال حاضر غیرفعال است.' : reviewStatusText[profile.review_status],
+        linkButton('ورود به نامرالب', setting('PORTAL_ORIGIN') + '/#panel'));
+      } else {
+        await send(id, 'اگر در سایت حساب ساخته‌اید، برای دریافت وضعیت حساب و اعلان‌های آزمون، آن را به تلگرام وصل کنید.', {
+          inline_keyboard: [[{ text: 'اتصال حساب نامرالب', web_app: { url: new URL('/register.html?mode=link', setting('PORTAL_ORIGIN')).href } }]],
+        });
+      }
+    } else if (command === '/quizzes' || text === labels.quizzes) {
+      await send(id, 'برای ساخت آزمون یا دیدن آزمون‌های اختصاص‌یافته، وارد پنل نامرالب شوید.',
+        linkButton('باز کردن آزمون‌ها', setting('PORTAL_ORIGIN') + '/#panel'));
     } else if (command === '/panel' || text === labels.login || (command === '/start' && input === 'login')) {
       const [profile] = await query<{ id: string }[]>('portal_profiles', {
         telegram_id: `eq.${id}`, active: 'eq.true', select: 'id', limit: '1',
@@ -67,7 +84,7 @@ export async function telegramWebhook(request: Request) {
       await send(id, `شناسهٔ عددی تلگرام شما: ${id}`, menu);
     } else {
       await sendMenu();
-      if (isAdmin && command === '/start') await send(id, 'برای دیدن صف استادان و دانشجویان، «درخواست‌های ثبت‌نام» را بزنید.', menu);
+      if (command === '/start') await send(id, isAdmin ? 'برای دیدن صف، «درخواست‌های ثبت‌نام» را بزنید.' : 'وضعیت حساب و اتصال تلگرام در منو در دسترس است.', menu);
     }
   } catch (error) {
     if (error instanceof PortalError && error.status === 429) {

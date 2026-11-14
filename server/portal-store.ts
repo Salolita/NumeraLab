@@ -80,6 +80,7 @@ export interface Profile {
   first_name: string;
   last_name: string;
   active: boolean;
+  course_name?: string | null;
 }
 
 export function cookieValue(request: Request) {
@@ -95,7 +96,7 @@ export async function currentProfile(request: Request) {
   });
   if (!session) return null;
   const [profile] = await query<Profile[]>('portal_profiles', {
-    id: `eq.${session.profile_id}`, active: 'eq.true', select: 'id,username,role,first_name,last_name,active', limit: '1',
+    id: `eq.${session.profile_id}`, active: 'eq.true', select: 'id,username,role,first_name,last_name,active,course_name', limit: '1',
   });
   return profile ?? null;
 }
