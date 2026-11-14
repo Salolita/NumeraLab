@@ -1,11 +1,11 @@
 import {
-  cookieValue, currentProfile, digest, field, internalEmail, limit, PortalError,
-  query, readBody, reply, rpc, setting, studentNumber, supabase, token, verifyPassword, write,
+  cookieValue, currentProfile, digest, field, limit, PortalError,
+  query, readBody, reply, setting, studentNumber, token, verifyPassword, write,
 } from '../server/portal-store.js';
 import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
 import { telegramIdentity } from '../server/telegram-identity.js';
-import { admins, notifyReview, queueStudent } from '../server/student-review.js';
+import { admins, notifyReview, queueAccount } from '../server/account-review.js';
 
 export default {
   async fetch(request: Request) {
@@ -43,7 +43,7 @@ export default {
         const role = field(body, 'role');
         if (role !== 'student' && role !== 'teacher') throw new PortalError(400, 'نوع حساب معتبر نیست.');
         const initData = field(body, 'telegramInitData');
-        const telegram = initData || role === 'teacher' ? telegramIdentity(initData) : null;
+        const telegram = initData ? telegramIdentity(initData) : null;
         const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
         await limit(`register:ip:${ip}`, 12);
         if (telegram) await limit(`register:telegram:${telegram}`, 8);
@@ -52,39 +52,29 @@ export default {
         if (!first || !last || first.length > 80 || last.length > 80 || /[\p{Cc}\p{Cf}]/u.test(first.replaceAll('\u200c', '') + last.replaceAll('\u200c', ''))) {
           throw new PortalError(422, 'نام و نام خانوادگی معتبر وارد کنید.');
         }
-        const profile = { username, first_name: first, last_name: last };
+        if (!admins().length) throw new PortalError(503, 'مدیر ثبت‌نام هنوز تنظیم نشده است.');
+        const phone = studentNumber(field(body, 'phone')).replace(/[\s()-]/g, '');
+        if (!/^\+?[0-9]{10,15}$/.test(phone)) throw new PortalError(422, 'شمارهٔ تماس را بررسی کنید.');
+        const profile = { username, first_name: first, last_name: last, phone, telegram_id: telegram };
+        let account;
         if (role === 'student') {
-          if (!admins().length) throw new PortalError(503, 'مدیر ثبت‌نام هنوز تنظیم نشده است.');
           const number = studentNumber(field(body, 'studentNumber'));
-          const phone = studentNumber(field(body, 'phone')).replace(/[\s()-]/g, '');
           const date = field(body, 'birthDate');
           const parsedDate = new Date(date + 'T00:00:00Z');
           const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(parsedDate.getTime())
             && parsedDate.toISOString().slice(0, 10) === date && date >= '1900-01-01' && date < new Date().toISOString().slice(0, 10);
           if (!eligibleStudent(number)) throw new PortalError(422, 'شمارهٔ دانشجویی برای این ثبت‌نام معتبر نیست.');
-          if (!/^\+?[0-9]{10,15}$/.test(phone) || !validDate) throw new PortalError(422, 'شمارهٔ تماس و تاریخ تولد را بررسی کنید.');
-          const student = await queueStudent({ ...profile, student_number: number, birth_date: date, phone, telegram_id: telegram }, password);
-          const notified = student ? await notifyReview(student) : true;
-          return reply({ registered: true, pending: true, notified }, student ? 201 : 200);
+          if (!validDate) throw new PortalError(422, 'تاریخ تولد را بررسی کنید.');
+          account = await queueAccount({ ...profile, role, student_number: number, birth_date: date }, password);
+        } else {
+          const course = field(body, 'courseName').trim();
+          if (!course || course.length > 120 || /[\p{Cc}\p{Cf}]/u.test(course.replaceAll('\u200c', ''))) {
+            throw new PortalError(422, 'نام درس را با حداکثر ۱۲۰ نویسه وارد کنید.');
+          }
+          account = await queueAccount({ ...profile, role, course_name: course }, password);
         }
-
-        const [invite] = await query<{ code_hash: string }[]>('portal_invites', {
-          telegram_id: `eq.${telegram}`, role: 'eq.teacher', select: 'code_hash', used_at: 'is.null',
-          expires_at: `gt.${new Date().toISOString()}`, order: 'expires_at.desc', limit: '1',
-        });
-        if (!invite) throw new PortalError(403, 'دعوت فعال برای این حساب تلگرام پیدا نشد. اگر قبلاً ثبت‌نام کرده‌اید، از سایت وارد شوید.');
-        const ticket = digest(token());
-        const claimedRole = await rpc<string | null>('portal_claim_invite', {
-          p_code: invite.code_hash, p_telegram: telegram, p_ticket: ticket,
-        });
-        if (claimedRole !== role) throw new PortalError(409, 'این دعوت دیگر قابل استفاده نیست.');
-        await supabase('/auth/v1/admin/users', 'POST', {
-          email: internalEmail(username), password, email_confirm: true,
-          app_metadata: { portal_signup: {
-            ticket, ...profile, student_number: null, birth_date: null,
-          } },
-        });
-        return reply({ registered: true });
+        const notified = account ? await notifyReview(account) : true;
+        return reply({ registered: true, pending: true, notified }, account ? 201 : 200);
       }
 
       const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';

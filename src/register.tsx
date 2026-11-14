@@ -37,33 +37,28 @@ function Register() {
   return <main className="numralab mx-auto max-w-lg p-4 sm:p-6">
     <section className="solver-panel space-y-4 p-4 sm:p-6">
       <h1 className="text-xl font-black">{role === 'teacher' ? 'ساخت حساب استاد' : 'ساخت حساب دانشجو'}</h1>
-      {role === 'teacher' && !telegram?.initData ? <>
-        <p>فرم ساخت حساب را از دکمهٔ داخل گفت‌وگوی خصوصی ربات باز کنید.</p>
-        <a className={button + ' inline-block'} href="https://t.me/ieaumbot">باز کردن ربات نامرالب</a>
-      </> : success ? <>
-        <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">{role === 'student'
-          ? 'درخواست ثبت شد و در انتظار تأیید مدیر است. پس از تأیید می‌توانید از سایت وارد شوید.'
-          : 'حساب ساخته شد. برای ورود از سایت نامرالب استفاده کنید.'}</p>
+      {success ? <>
+        <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-700">درخواست ثبت شد و در انتظار تأیید مدیر است. پس از تأیید می‌توانید از سایت وارد شوید.</p>
         {!notified && <p className="text-sm text-slate-600">درخواست در صف مدیر ذخیره شد. ارسال اعلان تلگرام فعلاً انجام نشد.</p>}
         {telegram?.initData ? <button type="button" className={button} onClick={() => telegram.close()}>بازگشت به ربات</button>
           : <a className={button + ' inline-block'} href="/#panel">رفتن به صفحهٔ ورود</a>}
       </> : <form className="space-y-3" onSubmit={submit}>
         {role === 'student' && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">ویژهٔ دانشجویان ورودی ۴۰۴. حساب پس از تأیید مدیر فعال می‌شود.</p>}
-        {role === 'teacher' && <p className="text-sm text-slate-600">حساب با دعوت مدیر و با همین تلگرام ساخته می‌شود.</p>}
+        {role === 'teacher' && <p className="text-sm text-slate-600">حساب پس از تأیید مدیر فعال می‌شود.</p>}
         <div className="grid grid-cols-2 gap-3">
           <label>نام<input name="firstName" autoComplete="given-name" maxLength={80} required className={field} /></label>
           <label>نام خانوادگی<input name="lastName" autoComplete="family-name" maxLength={80} required className={field} /></label>
         </div>
-        {role === 'student' && <>
+        {role === 'student' ? <>
           <label className="block">شمارهٔ دانشجویی<input name="studentNumber" dir="ltr" inputMode="numeric" maxLength={20} required className={field} /></label>
-          <label className="block">شمارهٔ تماس<input name="phone" type="tel" dir="ltr" autoComplete="tel" maxLength={24} required className={field} /></label>
           <label className="block">تاریخ تولد (میلادی)<input name="birthDate" type="date" autoComplete="bday" required className={field} /></label>
-        </>}
+        </> : <label className="block">نام درس<input name="courseName" maxLength={120} required className={field} /></label>}
+        <label className="block">شمارهٔ تماس<input name="phone" type="tel" dir="ltr" autoComplete="tel" maxLength={24} required className={field} /></label>
         <label className="block">نام کاربری<input name="username" dir="ltr" autoComplete="username" minLength={3} maxLength={32} required className={field} /></label>
         <label className="block">رمز عبور<input name="password" type="password" dir="ltr" autoComplete="new-password" minLength={12} maxLength={72} required className={field} /></label>
         <p className="text-sm text-slate-600">نام کاربری انگلیسی و رمز حداقل ۱۲ نویسه باشد.</p>
         {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-700">{error}</p>}
-        <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : role === 'student' ? 'ارسال درخواست' : 'ساخت حساب'}</button>
+        <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : 'ارسال درخواست'}</button>
       </form>}
     </section>
   </main>;

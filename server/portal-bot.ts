@@ -1,8 +1,8 @@
-import { digest, equalSecret, limit, PortalError, query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern } from './portal-store.js';
-import { decideReview, pendingReviews, type ReviewCallback } from './student-review.js';
+import { equalSecret, limit, PortalError, query, readBody, reply, setting } from './portal-store.js';
+import { admins, decideReview, pendingReviews, type ReviewCallback } from './account-review.js';
 
 const labels = {
-  login: 'ورود به پنل', student: 'ساخت حساب دانشجو', teacher: 'فعال‌سازی حساب استاد',
+  login: 'ورود به پنل', student: 'ساخت حساب دانشجو', teacher: 'ساخت حساب استاد', legacyTeacher: 'فعال‌سازی حساب استاد',
   id: 'شناسهٔ تلگرام من', help: 'راهنما', inviteStudent: 'دعوت دانشجو', inviteTeacher: 'دعوت استاد',
 };
 
@@ -38,12 +38,12 @@ export async function telegramWebhook(request: Request) {
 
   const id = String(message.from.id);
   const text = message.text.trim();
-  const [command, input, extra] = text.split(/\s+/, 3);
-  const isAdmin = (process.env.TELEGRAM_ADMIN_IDS ?? '').split(',').map((value) => value.trim()).includes(id);
+  const [command, input] = text.split(/\s+/, 3);
+  const isAdmin = admins().includes(id);
   const rows = [[labels.login], [labels.student, labels.teacher], [labels.id, labels.help]];
-  if (isAdmin) rows.push(['درخواست‌های ثبت‌نام', labels.inviteTeacher]);
+  if (isAdmin) rows.push(['درخواست‌های ثبت‌نام']);
   const menu: Markup = { keyboard: rows.map((row) => row.map((label) => ({ text: label }))), resize_keyboard: true, is_persistent: true };
-  const sendMenu = () => send(id, 'فرم ثبت‌نام دانشجو را پر کنید و منتظر تصمیم مدیر بمانید. اگر حساب دارید، از سایت وارد شوید.', {
+  const sendMenu = () => send(id, 'نوع حساب را انتخاب کنید و پس از ارسال فرم منتظر تصمیم مدیر بمانید. اگر حساب دارید، از سایت وارد شوید.', {
     inline_keyboard: [[signupButton('student')], [signupButton('teacher')],
       [{ text: 'ورود از سایت', url: new URL('/#panel', setting('PORTAL_ORIGIN')).href }]],
   });
@@ -51,34 +51,10 @@ export async function telegramWebhook(request: Request) {
     await limit(`telegram:${id}`, 25);
     if (isAdmin && (command === '/requests' || text === 'درخواست‌های ثبت‌نام' || text === labels.inviteStudent || command === '/student')) {
       await pendingReviews(id);
-    } else if (command === '/teacher') {
-      if (!isAdmin) {
-        await send(id, 'صدور دعوت در اختیار مدیر سامانه است.', menu);
-        return reply({ ok: true });
-      }
-      const recipient = studentNumber(input ?? '');
-      if (!/^[1-9]\d{0,15}$/.test(recipient) || extra) {
-        await send(id, 'پس از بررسی هویت استاد، دستور /teacher شناسه‌تلگرام را بفرستید.', menu);
-        return reply({ ok: true });
-      }
-      const code = token();
-      const created = await rpc<boolean>('portal_issue_invite', {
-        p_code: digest(code), p_role: 'teacher', p_number: null, p_telegram: recipient,
-      });
-      if (!created) {
-        await send(id, 'برای این شمارهٔ دانشجویی یا حساب تلگرام قبلاً حساب ساخته شده است.');
-        return reply({ ok: true });
-      }
-      await send(id, `دعوت برای شناسهٔ ${recipient} ثبت شد و ۴۸ ساعت اعتبار دارد. گیرنده در ربات /start را می‌زند و نوع حساب را انتخاب می‌کند.`, menu);
-    } else if (command === '/start' && tokenPattern.test(input ?? '')) {
-      const [invite] = await query<{ role: 'student' | 'teacher' }[]>('portal_invites', {
-        code_hash: `eq.${digest(input)}`, telegram_id: `eq.${id}`, used_at: 'is.null', expires_at: `gt.${new Date().toISOString()}`,
-        select: 'role', limit: '1',
-      });
-      if (invite) await send(id, 'فرم ساخت حساب را همین‌جا در تلگرام باز کنید.', { inline_keyboard: [[signupButton(invite.role)]] });
-      else await sendMenu();
-    } else if (text === labels.student || text === labels.teacher || (command === '/start' && ['student', 'teacher'].includes(input))) {
-      const role = text === labels.teacher || input === 'teacher' ? 'teacher' : 'student';
+    } else if (command === '/teacher' || text === labels.inviteTeacher) {
+      await send(id, 'استاد می‌تواند فرم ساخت حساب را باز کند و درخواستش را برای تأیید مدیر بفرستد.', { inline_keyboard: [[signupButton('teacher')]] });
+    } else if (text === labels.student || text === labels.teacher || text === labels.legacyTeacher || (command === '/start' && ['student', 'teacher'].includes(input))) {
+      const role = text === labels.teacher || text === labels.legacyTeacher || input === 'teacher' ? 'teacher' : 'student';
       await send(id, 'فرم ساخت حساب را همین‌جا در تلگرام باز کنید.', { inline_keyboard: [[signupButton(role)]] });
     } else if (command === '/panel' || text === labels.login || (command === '/start' && input === 'login')) {
       const [profile] = await query<{ id: string }[]>('portal_profiles', {
@@ -89,15 +65,13 @@ export async function telegramWebhook(request: Request) {
       linkButton('باز کردن فرم ورود', setting('PORTAL_ORIGIN') + '/#panel'));
     } else if (command === '/id' || text === labels.id) {
       await send(id, `شناسهٔ عددی تلگرام شما: ${id}`, menu);
-    } else if (isAdmin && text === labels.inviteTeacher) {
-      await send(id, 'بعد از تأیید استاد، دستور /teacher شناسه‌تلگرام را بفرستید. دعوت فقط با همان حساب باز می‌شود.', menu);
     } else {
       await sendMenu();
-      if (isAdmin && command === '/start') await send(id, 'برای صدور دعوت، از دکمه‌های مدیریت پایین استفاده کنید.', menu);
+      if (isAdmin && command === '/start') await send(id, 'برای دیدن صف استادان و دانشجویان، «درخواست‌های ثبت‌نام» را بزنید.', menu);
     }
   } catch (error) {
-    if (error instanceof PortalError && (error.status === 409 || error.status === 429)) {
-      await send(id, error.status === 409 ? 'برای این شمارهٔ دانشجویی قبلاً دعوت صادر شده است.' : error.message);
+    if (error instanceof PortalError && error.status === 429) {
+      await send(id, error.message);
     } else throw error;
   }
   return reply({ ok: true });

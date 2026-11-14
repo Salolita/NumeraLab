@@ -3,7 +3,6 @@ import { QuizPanel } from './QuizPanel';
 import { portal } from '../utils/portal';
 
 export interface Account { username: string; first_name: string; last_name: string; role: 'student' | 'teacher' }
-const bot = 'https://t.me/ieaumbot';
 const fields = 'w-full rounded-lg border border-slate-300 px-3 py-2';
 const button = 'rounded-lg bg-sky-600 px-4 py-2 font-bold text-white disabled:opacity-50';
 
@@ -61,7 +60,7 @@ export function AccountPanel() {
       </form>
       <div className="flex flex-wrap gap-4 border-t border-slate-200 pt-4 text-sm">
         <a className="font-bold text-sky-800" href="/register.html?role=student">ثبت‌نام دانشجو (ورودی ۴۰۴)</a>
-        <a className="font-bold text-sky-800" href={bot + '?start=teacher'}>فعال‌سازی حساب استاد ↗</a>
+        <a className="font-bold text-sky-800" href="/register.html?role=teacher">ساخت حساب استاد</a>
       </div>
       </>
     )}

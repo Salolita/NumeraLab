@@ -2,25 +2,31 @@ import {
   AuthAccountExists, internalEmail, limit, PortalError, query, setting, supabase, uuidPattern, verifyPassword, write,
 } from './portal-store.js';
 
-export interface StudentRequest {
+type AccountRole = 'student' | 'teacher';
+
+interface AccountRequest {
   id: string;
+  role: AccountRole;
   first_name: string;
   last_name: string;
-  student_number: string;
+  student_number: string | null;
+  course_name: string | null;
   telegram_id: string | null;
 }
 export const admins = () => [...new Set(setting('TELEGRAM_ADMIN_IDS').split(',').map((id) => id.trim()).filter((id) => /^[1-9]\d{0,15}$/.test(id)))];
-export const studentFields = 'id,first_name,last_name,student_number,telegram_id';
+const requestFields = 'id,role,first_name,last_name,student_number,course_name,telegram_id';
 
-type Application = Omit<StudentRequest, 'id'> & { username: string; birth_date: string; phone: string };
+type Application = Pick<AccountRequest, 'first_name' | 'last_name' | 'telegram_id'> & { username: string; phone: string } & (
+  { role: 'student'; student_number: string; birth_date: string } | { role: 'teacher'; course_name: string }
+);
 
-export async function queueStudent(application: Application, password: string) {
-  const { username } = application;
+export async function queueAccount(application: Application, password: string) {
+  const { username, role } = application;
   let created: { id: string };
   try {
     created = await supabase('/auth/v1/admin/users', 'POST', {
       email: internalEmail(username), password, email_confirm: true,
-      app_metadata: { portal_student_request: application },
+      app_metadata: { [`portal_${role}_request`]: application },
     });
   } catch (error) {
     if (!(error instanceof AuthAccountExists)) throw error;
@@ -34,20 +40,20 @@ export async function queueStudent(application: Application, password: string) {
     const [existing] = await query<{ role: string; review_status: string }[]>('portal_profiles', {
       id: `eq.${id}`, select: 'role,review_status',
     });
-    if (existing?.role === 'student' && existing.review_status === 'pending') return null;
-    if (existing?.role === 'student' && existing.review_status === 'rejected') {
+    if (existing?.role === role && existing.review_status === 'pending') return null;
+    if (existing?.role === role && existing.review_status === 'rejected') {
       throw new PortalError(403, 'درخواست قبلی لغو شده است. برای پیگیری با مدیر گروه تماس بگیرید.');
     }
     if (existing) throw new PortalError(409, 'حساب قبلاً ساخته شده است. از بخش ورود استفاده کنید.');
     // Complete older sign-ups only after proving ownership of the existing credentials.
-    const [student] = await write<StudentRequest[]>('portal_profiles', 'POST', {
-      id, ...application, role: 'student', active: false, review_status: 'pending',
-    }, { select: studentFields });
-    return student;
+    const [account] = await write<AccountRequest[]>('portal_profiles', 'POST', {
+      id, ...application, active: false, review_status: 'pending',
+    }, { select: requestFields });
+    return account;
   }
-  const [student] = await query<StudentRequest[]>('portal_profiles', { id: `eq.${created.id}`, select: studentFields });
-  if (!student) throw new PortalError(503, 'ثبت درخواست کامل نشد. با همان نام کاربری و رمز دوباره تلاش کنید.');
-  return student;
+  const [account] = await query<AccountRequest[]>('portal_profiles', { id: `eq.${created.id}`, select: requestFields });
+  if (!account) throw new PortalError(503, 'ثبت درخواست کامل نشد. با همان نام کاربری و رمز دوباره تلاش کنید.');
+  return account;
 }
 
 async function telegram(method: string, body: object) {
@@ -58,31 +64,33 @@ async function telegram(method: string, body: object) {
   if (!response.ok || !(await response.json()).ok) throw new Error('Telegram delivery failed');
 }
 
-function reviewText(student: StudentRequest) {
-  return `درخواست حساب دانشجو\nنام: ${student.first_name}\nنام خانوادگی: ${student.last_name}\nشمارهٔ دانشجویی: ${student.student_number}`;
+function reviewText(account: AccountRequest) {
+  const teacher = account.role === 'teacher';
+  const detail = teacher ? `نام درس: ${account.course_name}` : `شمارهٔ دانشجویی: ${account.student_number}`;
+  return `درخواست حساب ${teacher ? 'استاد' : 'دانشجو'}\nنام: ${account.first_name}\nنام خانوادگی: ${account.last_name}\n${detail}`;
 }
-function sendReview(chat: string, student: StudentRequest) {
-  return telegram('sendMessage', { chat_id: chat, text: reviewText(student), reply_markup: { inline_keyboard: [[
-    { text: 'تأیید', callback_data: `approve:${student.id}` },
-    { text: 'لغو', callback_data: `reject:${student.id}` },
+function sendReview(chat: string, account: AccountRequest) {
+  return telegram('sendMessage', { chat_id: chat, text: reviewText(account), reply_markup: { inline_keyboard: [[
+    { text: 'تأیید', callback_data: `approve:${account.id}` },
+    { text: 'لغو', callback_data: `reject:${account.id}` },
   ]] } });
 }
-export async function notifyReview(student: StudentRequest) {
+export async function notifyReview(account: AccountRequest) {
   const deliveries = await Promise.allSettled([
-    ...admins().map((id) => sendReview(id, student)),
-    ...(student.telegram_id ? [telegram('sendMessage', { chat_id: student.telegram_id,
+    ...admins().map((id) => sendReview(id, account)),
+    ...(account.telegram_id ? [telegram('sendMessage', { chat_id: account.telegram_id,
       text: 'درخواست ثبت‌نام شما دریافت شد و در انتظار تأیید مدیر است.' })] : []),
   ]);
-  if (student.telegram_id) deliveries.pop();
+  if (account.telegram_id) deliveries.pop();
   return deliveries.some((delivery) => delivery.status === 'fulfilled');
 }
 export async function pendingReviews(chat: string) {
   if (!admins().includes(chat)) return;
-  const students = await query<StudentRequest[]>('portal_profiles', {
-    review_status: 'eq.pending', select: studentFields, order: 'requested_at.asc', limit: '10',
+  const accounts = await query<AccountRequest[]>('portal_profiles', {
+    review_status: 'eq.pending', select: requestFields, order: 'requested_at.asc', limit: '10',
   });
-  if (!students.length) await telegram('sendMessage', { chat_id: chat, text: 'درخواست در انتظار تأیید وجود ندارد.' });
-  else for (const student of students) await sendReview(chat, student);
+  if (!accounts.length) await telegram('sendMessage', { chat_id: chat, text: 'درخواست در انتظار تأیید وجود ندارد.' });
+  else for (const account of accounts) await sendReview(chat, account);
 }
 
 export interface ReviewCallback {
@@ -102,17 +110,17 @@ export async function decideReview(callback: ReviewCallback) {
     return;
   }
   const approved = decision === 'approve';
-  const [student] = await write<StudentRequest[]>('portal_profiles', 'PATCH', {
+  const [account] = await write<AccountRequest[]>('portal_profiles', 'PATCH', {
     active: approved, review_status: approved ? 'approved' : 'rejected',
-  }, { id: `eq.${id}`, role: 'eq.student', review_status: 'eq.pending', select: studentFields });
-  const status = student ? approved ? 'حساب تأیید شد.' : 'درخواست لغو شد.' : 'این درخواست قبلاً بررسی شده است.';
+  }, { id: `eq.${id}`, review_status: 'eq.pending', select: requestFields });
+  const status = account ? approved ? 'حساب تأیید شد.' : 'درخواست لغو شد.' : 'این درخواست قبلاً بررسی شده است.';
   await Promise.allSettled([
     answer(status),
     telegram('editMessageText', {
       chat_id: chat.id, message_id: callback.message?.message_id,
-      text: student ? `${reviewText(student)}\n\n${status}` : status, reply_markup: { inline_keyboard: [] },
+      text: account ? `${reviewText(account)}\n\n${status}` : status, reply_markup: { inline_keyboard: [] },
     }),
-    ...(student?.telegram_id ? [telegram('sendMessage', { chat_id: student.telegram_id,
+    ...(account?.telegram_id ? [telegram('sendMessage', { chat_id: account.telegram_id,
       text: approved ? 'حسابتان تأیید شد. از سایت وارد شوید.' : 'درخواست حساب لغو شد. برای پیگیری با مدیر گروه تماس بگیرید.',
       ...(approved ? { reply_markup: { inline_keyboard: [[{ text: 'ورود به نامرالب', url: setting('PORTAL_ORIGIN') + '/#panel' }]] } } : {}),
     })] : []),
