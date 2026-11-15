@@ -22,6 +22,19 @@ function sequence(questions){
   }
   return [...steps,{type:'ranking'}];
 }
+function furthestPosition(state,steps){
+  const furthestSlide=steps.findIndex(step=>step.type==='slide'&&step.number===state.furthestSlide);
+  return Math.max(state.position,state.furthestPosition??-1,furthestSlide);
+}
+function playerPosition(state,steps,player){
+  const reached=furthestPosition(state,steps);
+  // A participant may owe a question even after the presenter advances or goes back.
+  for(let position=player.firstPosition??0;position<=reached;position++){
+    const step=steps[position];
+    if(step.type==='question'&&player.answers[step.index]===undefined) return position;
+  }
+  return state.position;
+}
 function ranking(state){
   const rows=Object.values(state.players).map(p=>({name:p.name,score:state.questions.reduce(
     (n,q,i)=>n+Number(p.answers[i]===q.correct),0)})).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'fa'));
@@ -33,8 +46,9 @@ function ranking(state){
 }
 function view(state,admin,player){
   const steps=sequence(state.questions);
-  const step=steps[state.position]??{type:'waiting'};
-  const result={step,position:state.position,total:steps.length};
+  const position=player?playerPosition(state,steps,player):state.position;
+  const step=steps[position]??{type:'waiting'};
+  const result={step,position,total:steps.length};
   if(step.type==='question'){
     const {text,options}=state.questions[step.index];
     result.question={text,options};
@@ -97,7 +111,9 @@ export default {
         const player=admin?null:requirePlayer(state,key);
         if(action==='state') return json(view(state,admin,player));
         if(action==='image'){
-          const step=sequence(state.questions)[state.position];
+          const steps=sequence(state.questions);
+          const position=player?playerPosition(state,steps,player):state.position;
+          const step=steps[position];
           if(step?.type!=='slide'||String(step.number)!==url.searchParams.get('n'))
             fail(404,'این اسلاید در حال نمایش نیست.');
           const slide=await readFile(resolve(process.cwd(),'presentation/slides',String(step.number).padStart(2,'0')+'.jpg'));
@@ -117,15 +133,18 @@ export default {
           if(!name||name.length>40) fail(400,'نامت را تا ۴۰ نویسه وارد کن.');
           if(Object.keys(state.players).length>=150) fail(409,'ظرفیت جلسه تکمیل است.');
           const id=token();
-          state.players[id]={name,answers:{}};
+          state.players[id]={name,answers:{},firstPosition:Math.max(0,state.position)};
           return {state,result:{id,view:view(state,false,state.players[id])}};
         });
       }
       if(action==='answer'){
         return await change(state=>{
           const player=requirePlayer(state,key);
-          const step=sequence(state.questions)[state.position];
-          if(step?.type!=='question'||data?.index!==step.index) fail(409,'زمان پاسخ به این سؤال تمام شده.');
+          const steps=sequence(state.questions);
+          const step=steps[playerPosition(state,steps,player)];
+          if(Number.isInteger(data?.index)&&player.answers[data.index]!==undefined)
+            return {state,result:view(state,false,player)};
+          if(step?.type!=='question'||data?.index!==step.index) fail(409,'این سؤال در حال نمایش نیست.');
           if(!Number.isInteger(data.choice)||data.choice<0||data.choice>=state.questions[step.index].options.length)
             fail(400,'گزینه معتبر نیست.');
           if(player.answers[step.index]===undefined) player.answers[step.index]=data.choice;
@@ -153,8 +172,11 @@ export default {
         return await change(state=>{
           if(!state.room||data.room!==state.room||data.position!==state.position||![-1,1].includes(data.delta))
             fail(409,'وضعیت جلسه عوض شده. صفحه را بررسی کن.');
-          state.position=Math.max(-1,Math.min(sequence(state.questions).length-1,state.position+data.delta));
-          const step=sequence(state.questions)[state.position];
+          const steps=sequence(state.questions);
+          const reached=furthestPosition(state,steps);
+          state.position=Math.max(-1,Math.min(steps.length-1,state.position+data.delta));
+          state.furthestPosition=Math.max(reached,state.position);
+          const step=steps[state.position];
           if(step?.type==='slide') state.furthestSlide=Math.max(state.furthestSlide??0,step.number);
           return {state,result:view(state,true)};
         });
