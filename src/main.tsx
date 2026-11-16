@@ -4,6 +4,7 @@ import App from './App.tsx';
 import type { Account } from './components/AccountPanel';
 import { botReset, botSignup } from './utils/entry';
 import { portal } from './utils/portal';
+import { telegramLaunchData } from './utils/telegram-launch';
 import './index.css';
 
 function ServiceEntry() {
@@ -67,4 +68,9 @@ function ServiceEntry() {
   </div>;
 }
 
-createRoot(document.getElementById('root')!).render(<ServiceEntry />);
+if (telegramLaunchData(location.hash)) {
+  // Some clients open the bot's main Mini App at the site's root.
+  location.replace('/register.html' + location.hash);
+} else {
+  createRoot(document.getElementById('root')!).render(<ServiceEntry />);
+}

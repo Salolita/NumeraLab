@@ -98,6 +98,11 @@ export async function telegramWebhook(request: Request) {
 
     if (isAdmin && (command === '/requests' || text === labels.requests || text === 'دعوت دانشجو' || command === '/student')) {
       await pendingReviews(chat);
+    } else if (command === '/start' && input === 'signup') {
+      if (account) await send('قبلاً حساب نامرالب ساخته‌اید. از گزینهٔ ورود استفاده کنید.', menu);
+      else await send('نوع حساب را انتخاب کنید تا فرم مستقیم در تلگرام باز شود.', {
+        inline_keyboard: [[miniApp(labels.student, 'role=student')], [miniApp(labels.teacher, 'role=teacher')]],
+      });
     } else if (text === labels.teacher || text === 'فعال‌سازی حساب استاد' || text === 'دعوت استاد' || command === '/teacher' || (command === '/start' && input === 'teacher')) {
       await signup('teacher');
     } else if (text === labels.student || (command === '/start' && input === 'student')) {

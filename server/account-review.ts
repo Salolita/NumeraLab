@@ -21,8 +21,26 @@ type Application = Pick<AccountRequest, 'first_name' | 'last_name' | 'telegram_i
   { role: 'student'; student_number: string; birth_date: string } | { role: 'teacher'; course_name: string }
 );
 
+async function checkRegistrationConflicts(application: Application) {
+  const [linked] = await query<{ username: string }[]>('portal_profiles', {
+    telegram_id: `eq.${application.telegram_id}`, select: 'username', limit: '1',
+  });
+  if (linked && linked.username !== application.username) {
+    throw new PortalError(409, 'این حساب تلگرام به یک حساب نامرالب متصل است. برای همان حساب از گزینهٔ ورود استفاده کنید.');
+  }
+  if (application.role === 'student') {
+    const [registered] = await query<{ username: string }[]>('portal_profiles', {
+      student_number: `eq.${application.student_number}`, select: 'username', limit: '1',
+    });
+    if (registered && registered.username !== application.username) {
+      throw new PortalError(409, 'این شمارهٔ دانشجویی قبلاً ثبت شده است. شماره را بررسی کنید یا وارد حساب قبلی شوید.', 'studentNumber');
+    }
+  }
+}
+
 export async function queueAccount(application: Application, password: string) {
   const { username, role } = application;
+  await checkRegistrationConflicts(application);
   let created: { id: string };
   try {
     created = await supabase('/auth/v1/admin/users', 'POST', {
@@ -30,11 +48,15 @@ export async function queueAccount(application: Application, password: string) {
       app_metadata: { [`portal_${role}_request`]: application },
     });
   } catch (error) {
-    if (!(error instanceof AuthAccountExists)) throw error;
+    if (!(error instanceof AuthAccountExists)) {
+      // A concurrent signup may have claimed the number or Telegram account.
+      if (error instanceof PortalError && (error.status === 409 || error.status === 503)) await checkRegistrationConflicts(application);
+      throw error;
+    }
     await limit(`login:username:${username}`, 10);
     const id = await verifyPassword(username, password).catch((failure) => {
       if (failure instanceof PortalError && failure.status === 401) {
-        throw new PortalError(409, 'این نام کاربری قبلاً ثبت شده است. اگر ثبت‌نام را قبلاً شروع کرده‌اید، همان رمز قبلی را وارد کنید.');
+        throw new PortalError(409, 'این نام کاربری قبلاً ثبت شده است. نام دیگری انتخاب کنید یا اگر حساب متعلق به شماست، از رمز قبلی استفاده کنید.', 'username');
       }
       throw failure;
     });

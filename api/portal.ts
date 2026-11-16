@@ -15,7 +15,19 @@ async function endPreviousSession(request: Request) {
   if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
 }
 
-const validPassword = (password: string) => password.length >= 12 && new TextEncoder().encode(password).length <= 72;
+function checkPassword(password: string) {
+  if (Array.from(password).length < 8) throw new PortalError(422, 'رمز عبور باید دست‌کم ۸ نویسه داشته باشد.', 'password');
+  if (new TextEncoder().encode(password).length > 72) throw new PortalError(422, 'رمز عبور بیش از حد طولانی است. رمز کوتاه‌تری انتخاب کنید.', 'password');
+}
+
+function persianName(value: string, label: string, name: string) {
+  const cleaned = value.trim();
+  if (!cleaned) throw new PortalError(422, `${label} را وارد کنید.`, name);
+  if (cleaned.length > 80) throw new PortalError(422, `${label} باید حداکثر ۸۰ نویسه باشد.`, name);
+  if (!/^[آاأإبپتثجچحخدذرزژسشصضطظعغفقکكگلمنوهۀیيىؤئءـ\u064B-\u0655]+(?:[ \u200c]+[آاأإبپتثجچحخدذرزژسشصضطظعغفقکكگلمنوهۀیيىؤئءـ\u064B-\u0655]+)*$/u.test(cleaned)
+    || !/\p{L}/u.test(cleaned.replaceAll('ـ', ''))) throw new PortalError(422, `${label} را با حروف فارسی وارد کنید.`, name);
+  return cleaned;
+}
 
 export default {
   async fetch(request: Request) {
@@ -64,8 +76,9 @@ export default {
         const chat = telegramIdentity(field(body, 'telegramInitData'));
         await limit(`reset:telegram:${chat}`, 5);
         const password = field(body, 'password');
-        if (!validPassword(password) || password !== field(body, 'confirmPassword')) {
-          throw new PortalError(422, 'رمز جدید و تکرار آن باید یکسان باشند. رمز باید ۱۲ نویسه تا ۷۲ بایت باشد.');
+        checkPassword(password);
+        if (password !== field(body, 'confirmPassword')) {
+          throw new PortalError(422, 'رمز جدید و تکرار آن یکسان نیستند.', 'confirmPassword');
         }
         const resetCode = field(body, 'resetCode');
         if (!tokenPattern.test(resetCode)) throw new PortalError(401, 'از داخل ربات دوباره درخواست بازیابی رمز بدهید.');
@@ -87,45 +100,41 @@ export default {
 
       const username = field(body, 'username').trim().toLowerCase();
       const password = field(body, 'password');
-      if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username) || !validPassword(password)) {
-        throw new PortalError(422, 'نام کاربری باید ۳ تا ۳۲ نویسهٔ انگلیسی و رمز عبور ۱۲ نویسه تا ۷۲ بایت باشد.');
+      if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username)) {
+        throw new PortalError(422, 'نام کاربری باید ۳ تا ۳۲ نویسه باشد، با حرف انگلیسی یا عدد شروع شود و فقط از حروف انگلیسی، اعداد، نقطه، خط تیره یا زیرخط تشکیل شود.', 'username');
       }
+      checkPassword(password);
 
       if (action === 'register' && chat) {
         const role = field(body, 'role');
         if (role !== 'student' && role !== 'teacher') throw new PortalError(400, 'نوع حساب معتبر نیست.');
-        await limit(`register:ip:${ip}`, 12);
-        await limit(`register:telegram:${chat}`, 8);
-        const [linkedAccount] = await query<{ username: string }[]>('portal_profiles', {
-          telegram_id: `eq.${chat}`, select: 'username', limit: '1',
-        });
-        if (linkedAccount && linkedAccount.username !== username) throw new PortalError(409, 'این تلگرام قبلاً به یک حساب متصل شده است.');
-        const first = field(body, 'firstName').trim();
-        const last = field(body, 'lastName').trim();
-        if (!first || !last || first.length > 80 || last.length > 80 || /[\p{Cc}\p{Cf}]/u.test(first.replaceAll('\u200c', '') + last.replaceAll('\u200c', ''))) {
-          throw new PortalError(422, 'نام و نام خانوادگی معتبر وارد کنید.');
-        }
+        const first = persianName(field(body, 'firstName'), 'نام', 'firstName');
+        const last = persianName(field(body, 'lastName'), 'نام خانوادگی', 'lastName');
         if (!admins().length) throw new PortalError(503, 'مدیر ثبت‌نام هنوز تنظیم نشده است.');
         const phone = studentNumber(field(body, 'phone')).replace(/[\s()-]/g, '');
-        if (!/^\+?[0-9]{10,15}$/.test(phone)) throw new PortalError(422, 'شمارهٔ تماس را بررسی کنید.');
+        if (!/^\+?[0-9]{10,15}$/.test(phone)) throw new PortalError(422, 'شمارهٔ تماس باید ۱۰ تا ۱۵ رقم داشته باشد. برای شمارهٔ بین‌المللی، علامت + را اول شماره بگذارید.', 'phone');
         const profile = { username, first_name: first, last_name: last, phone, telegram_id: chat };
-        let account;
+        let application: Parameters<typeof queueAccount>[0];
         if (role === 'student') {
           const number = studentNumber(field(body, 'studentNumber'));
           const date = field(body, 'birthDate');
           const parsedDate = new Date(date + 'T00:00:00Z');
           const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(parsedDate.getTime())
             && parsedDate.toISOString().slice(0, 10) === date && date >= '1900-01-01' && date < new Date().toISOString().slice(0, 10);
-          if (!eligibleStudent(number)) throw new PortalError(422, 'شمارهٔ دانشجویی برای این ثبت‌نام معتبر نیست.');
-          if (!validDate) throw new PortalError(422, 'تاریخ تولد را بررسی کنید.');
-          account = await queueAccount({ ...profile, role, student_number: number, birth_date: date }, password);
+          if (!/^[0-9]{6,20}$/.test(number)) throw new PortalError(422, 'شمارهٔ دانشجویی را با ۶ تا ۲۰ رقم و بدون فاصله وارد کنید.', 'studentNumber');
+          if (!eligibleStudent(number)) throw new PortalError(422, 'ثبت‌نام دانشجویی فقط برای ورودی‌های ۴۰۴ دانشگاه آزاد مشهد است. شمارهٔ دانشجویی‌تان را بررسی کنید.', 'studentNumber');
+          if (!validDate) throw new PortalError(422, 'تاریخ تولد میلادی معتبر وارد کنید. تاریخ تولد باید قبل از امروز باشد.', 'birthDate');
+          application = { ...profile, role, student_number: number, birth_date: date };
         } else {
           const course = field(body, 'courseName').trim();
           if (!course || course.length > 120 || /[\p{Cc}\p{Cf}]/u.test(course.replaceAll('\u200c', ''))) {
-            throw new PortalError(422, 'نام درس را با حداکثر ۱۲۰ نویسه وارد کنید.');
+            throw new PortalError(422, 'نام درس را با حداکثر ۱۲۰ نویسه وارد کنید.', 'courseName');
           }
-          account = await queueAccount({ ...profile, role, course_name: course }, password);
+          application = { ...profile, role, course_name: course };
         }
+        await limit(`register:ip:${ip}`, 12);
+        await limit(`register:telegram:${chat}`, 8);
+        const account = await queueAccount(application, password);
         const notified = account ? await notifyReview(account) : true;
         if (account) await refreshPortalMenu(chat, true).catch(() => {});
         return reply({ registered: true, pending: true, notified }, account ? 201 : 200);
@@ -168,7 +177,7 @@ export default {
       await refreshPortalMenu(chat, true).catch(() => {});
       return reply({ nextUrl });
     } catch (error) {
-      if (error instanceof PortalError) return reply({ error: error.message }, error.status);
+      if (error instanceof PortalError) return reply({ error: error.message, field: error.field, code: error.code }, error.status);
       return reply({ error: 'درخواست انجام نشد. دوباره تلاش کنید.' }, 503);
     }
   },

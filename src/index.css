@@ -56,6 +56,7 @@
 .numralab .bg-white { background-color: var(--ieaum-panel); }
 .numralab .text-sky-600, .numralab .text-sky-700 { color: var(--color-sky-800); }
 .numralab input:not([type="range"]), .numralab select { background-color: #120e1d; min-width: 0; }
+.numralab input[aria-invalid="true"] { border-color: var(--color-rose-400); }
 .numralab input[type="range"] { accent-color: var(--color-sky-400); }
 .numralab :focus-visible { outline: 2px solid #d9c5ff; outline-offset: 3px; }
 .numralab button:disabled { cursor: default; }

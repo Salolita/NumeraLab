@@ -8,7 +8,7 @@ export const internalEmail = (username: string) => `${digest(username).slice(0, 
 export const studentNumber = (value: string) => value.trim().replace(/[۰-۹٠-٩]/g, (digit) => String(digit.charCodeAt(0) - (digit >= '۰' ? 0x6f0 : 0x660)));
 
 export class PortalError extends Error {
-  constructor(public readonly status: number, message: string) { super(message); }
+  constructor(public readonly status: number, message: string, public readonly field?: string, public readonly code?: string) { super(message); }
 }
 
 export class AuthAccountExists extends PortalError {
@@ -40,7 +40,7 @@ export async function supabase<T>(path: string, method = 'GET', body?: unknown, 
       const failure = await response.json().catch(() => null);
       const code = failure?.error_code ?? failure?.code;
       if (code === 'email_exists' || code === 'user_already_exists') throw new AuthAccountExists();
-      if (code === 'weak_password') throw new PortalError(422, 'رمز قوی‌تری با ترکیب حروف، عدد و نشانه انتخاب کنید.');
+      if (code === 'weak_password') throw new PortalError(422, 'سامانهٔ حساب‌ها این رمز را ضعیف تشخیص داد. رمز دیگری انتخاب کنید.', 'password');
       throw new PortalError(422, 'اطلاعات حساب پذیرفته نشد. نام کاربری و رمز را بررسی کنید.');
     }
     throw new PortalError(503, 'ارتباط با سامانهٔ حساب‌ها برقرار نشد.');
