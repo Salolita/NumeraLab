@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { useState, type FormEvent } from 'react';
 import { portal } from './utils/portal';
-import { botLogin, entryGuide, welcomeText } from './utils/entry';
+import { botLogin, botReset, entryGuide, welcomeText } from './utils/entry';
 import './index.css';
 
 const telegram = (window as Window & {
@@ -11,6 +11,9 @@ const requestedRole = new URLSearchParams(location.search).get('role');
 const role = requestedRole === 'teacher' ? 'teacher' : 'student';
 const params = new URLSearchParams(location.search);
 const loginMode = ['login', 'link'].includes(params.get('mode') ?? '');
+const resetMode = params.get('mode') === 'reset';
+const signup = !loginMode && !resetMode;
+const heading = resetMode ? 'تعیین رمز عبور جدید' : loginMode ? 'ورود به حساب' : role === 'teacher' ? 'ساخت حساب استاد' : 'ساخت حساب دانشجو';
 const field = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2';
 const button = 'rounded-lg bg-sky-600 px-4 py-2 font-bold text-white disabled:opacity-50';
 telegram?.ready();
@@ -30,8 +33,8 @@ function Register() {
     setError('');
     try {
       const result = await portal<{ notified?: boolean; nextUrl?: string }>({
-        ...Object.fromEntries(new FormData(form)), action: loginMode ? 'login' : 'register',
-        role, target: params.get('to'), telegramInitData: telegram?.initData,
+        ...Object.fromEntries(new FormData(form)), action: resetMode ? 'reset-password' : loginMode ? 'login' : 'register',
+        role, target: params.get('to'), resetCode: params.get('code'), telegramInitData: telegram?.initData,
       });
       setNotified(result.notified !== false);
       setNextUrl(result.nextUrl ?? '');
@@ -46,18 +49,18 @@ function Register() {
     <section className="solver-panel space-y-4 p-4 sm:p-6">
       <div className="flex items-center gap-3">
         <img src="/ieaum-logo.png" alt="" width="40" height="40" className="rounded-lg" />
-        <h1 className="text-xl font-black">{loginMode ? 'ورود به حساب' : role === 'teacher' ? 'ساخت حساب استاد' : 'ساخت حساب دانشجو'}</h1>
+        <h1 className="text-xl font-black">{heading}</h1>
       </div>
       {!telegram?.initData ? <>
         <p>{entryGuide}</p>
-        <a className={button + ' inline-block'} href={loginMode ? botLogin : `https://t.me/ieaumbot?start=${role}`}>باز کردن ربات تلگرام</a>
+        <a className={button + ' inline-block'} href={resetMode ? botReset : loginMode ? botLogin : `https://t.me/ieaumbot?start=${role}`}>باز کردن ربات تلگرام</a>
       </> : success ? <>
-        <p role="status" className="whitespace-pre-line rounded-lg bg-emerald-50 p-3 text-emerald-700">{loginMode ? welcomeText : 'درخواست ثبت شد و در انتظار تأیید مدیر است. پس از تأیید، ورود را از ربات انجام دهید.'}</p>
+        <p role="status" className="whitespace-pre-line rounded-lg bg-emerald-50 p-3 text-emerald-700">{resetMode ? 'رمز عبور تغییر کرد. می‌توانید با رمز جدید وارد سایت شوید یا از ربات لینک ورود بگیرید.' : loginMode ? welcomeText : 'درخواست ثبت شد و در انتظار تأیید مدیر است.'}</p>
         {!notified && <p className="text-sm text-slate-600">ارسال اعلان تلگرام انجام نشد.</p>}
         {loginMode ? <button type="button" className={button} onClick={() => telegram.openLink(nextUrl)}>بزن بریم!</button>
           : <button type="button" className={button} onClick={() => telegram.close()}>بازگشت به ربات</button>}
       </> : <form className="space-y-3" onSubmit={submit}>
-        {!loginMode && <>
+        {signup && <>
         {role === 'student' && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">ویژهٔ دانشجویان ورودی ۴۰۴. حساب پس از تأیید مدیر فعال می‌شود.</p>}
         {role === 'teacher' && <p className="text-sm text-slate-600">حساب پس از تأیید مدیر فعال می‌شود.</p>}
         <div className="grid grid-cols-2 gap-3">
@@ -70,11 +73,12 @@ function Register() {
         </> : <label className="block">نام درس<input name="courseName" maxLength={120} required className={field} /></label>}
         <label className="block">شمارهٔ تماس<input name="phone" type="tel" dir="ltr" autoComplete="tel" maxLength={24} required className={field} /></label>
         </>}
-        <label className="block">نام کاربری<input name="username" dir="ltr" autoComplete="username" minLength={3} maxLength={32} required className={field} /></label>
-        <label className="block">رمز عبور<input name="password" type="password" dir="ltr" autoComplete={loginMode ? 'current-password' : 'new-password'} minLength={12} maxLength={72} required className={field} /></label>
-        <p className="text-sm text-slate-600">نام کاربری انگلیسی و رمز حداقل ۱۲ نویسه باشد.</p>
+        {!resetMode && <label className="block">نام کاربری<input name="username" dir="ltr" autoComplete="username" minLength={3} maxLength={32} required className={field} /></label>}
+        <label className="block">{resetMode ? 'رمز عبور جدید' : 'رمز عبور'}<input name="password" type="password" dir="ltr" autoComplete={loginMode ? 'current-password' : 'new-password'} minLength={12} maxLength={72} required className={field} /></label>
+        {resetMode && <label className="block">تکرار رمز جدید<input name="confirmPassword" type="password" dir="ltr" autoComplete="new-password" minLength={12} maxLength={72} required className={field} /></label>}
+        <p className="text-sm text-slate-600">رمز عبور حداقل ۱۲ نویسه باشد.</p>
         {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-700">{error}</p>}
-        <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : loginMode ? 'ورود' : 'ارسال درخواست'}</button>
+        <button className={button} disabled={busy}>{busy ? 'در حال ارسال…' : resetMode ? 'ذخیرهٔ رمز جدید' : loginMode ? 'ورود' : 'ارسال درخواست'}</button>
       </form>}
     </section>
   </main>;

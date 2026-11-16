@@ -1,13 +1,21 @@
 import {
   cookieValue, currentProfile, digest, field, limit, PortalError,
-  query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern, verifyPassword, write,
+  query, readBody, reply, rpc, setting, studentNumber, supabase, token, tokenPattern, verifyPassword, write,
 } from '../server/portal-store.js';
 import { eligibleStudent, refreshPortalMenu, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
 import { telegramIdentity } from '../server/telegram-identity.js';
 import { admins, notifyReview, queueAccount, reviewStatusText } from '../server/account-review.js';
 import { welcomeText } from '../src/utils/entry.js';
-import { telegram as sendTelegram } from '../server/telegram-delivery.js';
+import { panelButton, telegram as sendTelegram } from '../server/telegram-delivery.js';
+import { issueLoginLink, resetDigest } from '../server/portal-entry.js';
+
+async function endPreviousSession(request: Request) {
+  const previous = cookieValue(request);
+  if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
+}
+
+const validPassword = (password: string) => password.length >= 12 && new TextEncoder().encode(password).length <= 72;
 
 export default {
   async fetch(request: Request) {
@@ -39,8 +47,7 @@ export default {
         if (!issued || !await rpc<boolean>('portal_open_session', { p_ticket: ticketHash, p_user: issued.profile_id, p_session: digest(session) })) {
           throw new PortalError(401, 'لینک ورود منقضی شده یا قبلاً استفاده شده است. دوباره از ربات اقدام کنید.');
         }
-        const previous = cookieValue(request);
-        if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
+        await endPreviousSession(request);
         return reply({ loggedIn: true }, 200, session);
       }
       if (action === 'logout') {
@@ -53,16 +60,38 @@ export default {
         if (!profile) throw new PortalError(401, 'ابتدا وارد پنل شوید.');
         return reply(await quizAction(action, body, profile));
       }
+      if (action === 'reset-password') {
+        const chat = telegramIdentity(field(body, 'telegramInitData'));
+        await limit(`reset:telegram:${chat}`, 5);
+        const password = field(body, 'password');
+        if (!validPassword(password) || password !== field(body, 'confirmPassword')) {
+          throw new PortalError(422, 'رمز جدید و تکرار آن باید یکسان باشند. رمز باید ۱۲ نویسه تا ۷۲ بایت باشد.');
+        }
+        const resetCode = field(body, 'resetCode');
+        if (!tokenPattern.test(resetCode)) throw new PortalError(401, 'از داخل ربات دوباره درخواست بازیابی رمز بدهید.');
+        const [account] = await query<{ id: string }[]>('portal_profiles', {
+          telegram_id: `eq.${chat}`, active: 'eq.true', select: 'id', limit: '1',
+        });
+        if (!account) throw new PortalError(403, 'این تلگرام به حساب فعال نامرالب متصل نیست.');
+        const [ticket] = await write<unknown[]>('portal_tickets', 'DELETE', undefined, {
+          token_hash: `eq.${resetDigest(resetCode)}`, profile_id: `eq.${account.id}`,
+          telegram_id: `eq.${chat}`, expires_at: `gt.${new Date().toISOString()}`, select: 'profile_id',
+        });
+        if (!ticket) throw new PortalError(401, 'لینک بازیابی منقضی شده یا قبلاً استفاده شده است. از ربات دوباره درخواست بدهید.');
+        await supabase(`/auth/v1/admin/users/${account.id}`, 'PUT', { password });
+        return reply({ reset: true }, 200, null);
+      }
       if (action !== 'register' && action !== 'login' && action !== 'link-telegram') throw new PortalError(400, 'درخواست معتبر نیست.');
-      const chat = telegramIdentity(field(body, 'telegramInitData'));
+      const initData = field(body, 'telegramInitData');
+      const chat = action !== 'login' || initData ? telegramIdentity(initData) : null;
 
       const username = field(body, 'username').trim().toLowerCase();
       const password = field(body, 'password');
-      if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username) || password.length < 12 || new TextEncoder().encode(password).length > 72) {
+      if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(username) || !validPassword(password)) {
         throw new PortalError(422, 'نام کاربری باید ۳ تا ۳۲ نویسهٔ انگلیسی و رمز عبور ۱۲ نویسه تا ۷۲ بایت باشد.');
       }
 
-      if (action === 'register') {
+      if (action === 'register' && chat) {
         const role = field(body, 'role');
         if (role !== 'student' && role !== 'teacher') throw new PortalError(400, 'نوع حساب معتبر نیست.');
         await limit(`register:ip:${ip}`, 12);
@@ -104,14 +133,14 @@ export default {
 
       await limit(`login:ip:${ip}`, 35);
       await limit(`login:username:${username}`, 10);
-      await limit(`login:telegram:${chat}`, 18);
+      if (chat) await limit(`login:telegram:${chat}`, 18);
       const invalid = 'نام کاربری یا رمز عبور معتبر نیست.';
       const id = await verifyPassword(username, password);
       type LoginProfile = { id: string; active: boolean; review_status: keyof typeof reviewStatusText; telegram_id: string | null };
       let [expected] = await query<LoginProfile[]>('portal_profiles', {
         id: `eq.${id}`, username: `eq.${username}`, select: 'id,active,review_status,telegram_id', limit: '1',
       });
-      if (expected && expected.telegram_id !== chat) {
+      if (chat && expected && expected.telegram_id !== chat) {
         if (expected.telegram_id) throw new PortalError(409, 'این حساب قبلاً به یک تلگرام متصل شده است.');
         const [linked] = await write<LoginProfile[]>('portal_profiles', 'PATCH', { telegram_id: chat }, {
           id: `eq.${id}`, telegram_id: 'is.null', select: 'id,active,review_status,telegram_id',
@@ -124,19 +153,20 @@ export default {
         if (expected?.review_status === 'rejected') throw new PortalError(403, 'درخواست شما لغو شده است. با مدیر گروه تماس بگیرید.');
         throw new PortalError(401, invalid);
       }
-      const target = field(body, 'target');
-      const destination = target === 'home' || target === 'solver' ? target : 'panel';
-      const ticket = token();
-      await write('portal_tickets', 'POST', { token_hash: digest(ticket), profile_id: id, telegram_id: chat,
-        expires_at: new Date(Date.now() + 180_000).toISOString() });
-      const handoff = new URL('/continue.html', setting('PORTAL_ORIGIN'));
-      handoff.searchParams.set('to', destination);
-      handoff.hash = ticket;
+      if (!chat) {
+        const session = token();
+        await write('portal_sessions', 'POST', { token_hash: digest(session), profile_id: id });
+        await endPreviousSession(request);
+        if (expected.telegram_id) await sendTelegram('sendMessage', { chat_id: expected.telegram_id, text: welcomeText,
+          reply_markup: panelButton('بزن بریم!') }).catch(() => {});
+        return reply({ loggedIn: true }, 200, session);
+      }
+      const nextUrl = await issueLoginLink(id, chat, field(body, 'target'));
       await sendTelegram('sendMessage', { chat_id: chat, text: welcomeText, reply_markup: { inline_keyboard: [[{
-        text: 'بزن بریم!', url: handoff.href,
+        text: 'بزن بریم!', url: nextUrl,
       }]] } }).catch(() => {});
       await refreshPortalMenu(chat, true).catch(() => {});
-      return reply({ nextUrl: handoff.href });
+      return reply({ nextUrl });
     } catch (error) {
       if (error instanceof PortalError) return reply({ error: error.message }, error.status);
       return reply({ error: 'درخواست انجام نشد. دوباره تلاش کنید.' }, 503);

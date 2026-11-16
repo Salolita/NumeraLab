@@ -36,7 +36,7 @@ export async function supabase<T>(path: string, method = 'GET', body?: unknown, 
     if (response.status === 409) throw new PortalError(409, 'این درخواست قبلاً ثبت شده یا یکی از مشخصات تکراری است.');
     if (response.status === 429) throw new PortalError(429, 'تعداد تلاش‌ها زیاد است. چند دقیقه دیگر دوباره امتحان کنید.');
     if (path.startsWith('/auth/v1/token?') && [400, 401].includes(response.status)) throw new PortalError(401, 'نام کاربری یا رمز عبور معتبر نیست.');
-    if (path === '/auth/v1/admin/users' && method === 'POST' && [400, 422].includes(response.status)) {
+    if (path.startsWith('/auth/v1/admin/users') && [400, 422].includes(response.status)) {
       const failure = await response.json().catch(() => null);
       const code = failure?.error_code ?? failure?.code;
       if (code === 'email_exists' || code === 'user_already_exists') throw new AuthAccountExists();
@@ -97,7 +97,7 @@ export async function currentProfile(request: Request) {
   });
   if (!session) return null;
   const [profile] = await query<Profile[]>('portal_profiles', {
-    id: `eq.${session.profile_id}`, active: 'eq.true', telegram_id: 'not.is.null',
+    id: `eq.${session.profile_id}`, active: 'eq.true',
     select: 'id,username,role,first_name,last_name,active,course_name,telegram_id', limit: '1',
   });
   return profile ?? null;
@@ -105,7 +105,7 @@ export async function currentProfile(request: Request) {
 
 export function reply(body: unknown, status = 200, session?: string | null) {
   const headers: Record<string, string> = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
-  if (session !== undefined) headers['Set-Cookie'] = `__Host-ieaum=${session ?? ''}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${session ? 28800 : 0}`;
+  if (session !== undefined) headers['Set-Cookie'] = `__Host-ieaum=${session ?? ''}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${session ? 2_592_000 : 0}`;
   return Response.json(body, { status, headers });
 }
 
