@@ -1,5 +1,8 @@
 {
   "functions": {
+    "api/portal.ts": {
+      "maxDuration": 60
+    },
     "api/presentation.ts": {
       "includeFiles": "presentation/slides/*.jpg"
     }

@@ -2,6 +2,7 @@ import { equalSecret, limit, PortalError, query, readBody, reply, setting } from
 import { admins, decideReview, pendingReviews, reviewStatusText, type ReviewCallback } from './account-review.js';
 import { telegram } from './telegram-delivery.js';
 import { issueLoginLink, issueResetCode } from './portal-entry.js';
+import { announcementLabel, announcementPrompt, decideAnnouncement, openAnnouncement, previewAnnouncement } from './admin-announcements.js';
 
 const labels = {
   home: 'ورود به سایت', solver: 'نامرالب', quizzes: 'آزمون‌ها', student: 'ساخت حساب دانشجو', teacher: 'ساخت حساب استاد',
@@ -19,7 +20,7 @@ function keyboard(chat: string, hasAccount: boolean) {
   if (!hasAccount) rows.push([labels.student, labels.teacher]);
   else rows.push([labels.reset]);
   rows.push([labels.sizing, labels.talent], [labels.about]);
-  if (admins().includes(chat)) rows.push([labels.requests]);
+  if (admins().includes(chat)) rows.push([labels.requests, announcementLabel]);
   return { keyboard: rows.map((row) => row.map((text) => ({ text }))), resize_keyboard: true, is_persistent: true };
 }
 
@@ -34,17 +35,38 @@ export async function telegramWebhook(request: Request) {
   }
   const update = await readBody(request);
   if (update.callback_query) {
-    await decideReview(update.callback_query as ReviewCallback);
+    const callback = update.callback_query as ReviewCallback;
+    if (typeof callback.data === 'string' && callback.data.startsWith('announce-')) await decideAnnouncement(callback);
+    else await decideReview(callback);
     return reply({ ok: true });
   }
-  const message = update.message as { chat?: { id?: number; type?: string }; from?: { id?: number }; text?: string } | undefined;
-  if (message?.chat?.type !== 'private' || !message.from || !Number.isSafeInteger(message.from.id) || message.chat.id !== message.from.id || typeof message.text !== 'string') return reply({ ok: true });
+  const message = update.message as {
+    message_id?: number;
+    chat?: { id?: number; type?: string };
+    from?: { id?: number };
+    text?: string;
+    reply_to_message?: { text?: string; from?: { is_bot?: boolean } };
+  } | undefined;
+  if (message?.chat?.type !== 'private' || !message.from || !Number.isSafeInteger(message.from.id) || message.chat.id !== message.from.id) return reply({ ok: true });
 
   const chat = String(message.from.id);
-  const text = message.text.trim();
+  const text = typeof message.text === 'string' ? message.text.trim() : '';
   const [command, input] = text.split(/\s+/, 2);
   const send = (text: string, reply_markup?: object) => telegram('sendMessage', { chat_id: chat, text, reply_markup, link_preview_options: { is_disabled: true } });
   try {
+    const isAdmin = admins().includes(chat);
+    const repliesToAnnouncement = message.reply_to_message?.from?.is_bot === true
+      && message.reply_to_message.text === announcementPrompt;
+    if (isAdmin && (repliesToAnnouncement || text === announcementLabel || command === '/announce')) {
+      await limit(`telegram:${chat}`, 25);
+      if (repliesToAnnouncement && typeof message.message_id === 'number' && Number.isSafeInteger(message.message_id)) {
+        await previewAnnouncement(chat, message.message_id, text);
+      } else {
+        await openAnnouncement(chat);
+      }
+      return reply({ ok: true });
+    }
+    if (!text) return reply({ ok: true });
     await limit(`telegram:${chat}`, 25);
     const [account] = await query<{ id: string; active: boolean; review_status: keyof typeof reviewStatusText }[]>('portal_profiles', {
       telegram_id: `eq.${chat}`, select: 'id,active,review_status', limit: '1',
@@ -74,7 +96,7 @@ export async function telegramWebhook(request: Request) {
       await send('فرم ساخت حساب را در مینی‌اپ باز کنید.', { inline_keyboard: [[miniApp(labels[role], 'role=' + role)]] });
     };
 
-    if (admins().includes(chat) && (command === '/requests' || text === labels.requests || text === 'دعوت دانشجو' || command === '/student')) {
+    if (isAdmin && (command === '/requests' || text === labels.requests || text === 'دعوت دانشجو' || command === '/student')) {
       await pendingReviews(chat);
     } else if (text === labels.teacher || text === 'فعال‌سازی حساب استاد' || text === 'دعوت استاد' || command === '/teacher' || (command === '/start' && input === 'teacher')) {
       await signup('teacher');
