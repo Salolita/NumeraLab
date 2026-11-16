@@ -13,7 +13,7 @@ import { FunctionPlot } from './components/FunctionPlot';
 import { ValidationTestsModal } from './components/ValidationTestsModal';
 import { EducationalGuide } from './components/EducationalGuide';
 import { WorkedSolution } from './components/WorkedSolution';
-import { AccountPanel } from './components/AccountPanel';
+import { AccountPanel, type Account } from './components/AccountPanel';
 import { InterpolationPanel } from './components/InterpolationPanel';
 import { Calculator, Play, Sparkles } from 'lucide-react';
 
@@ -36,7 +36,7 @@ function evaluateAt(fn: ((x: number) => number) | null, x: number) {
   try { return fn(x); } catch { return null; }
 }
 
-export default function App() {
+export default function App({ account, onLogout }: { account: Account; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<'solver' | 'benchmarks' | 'tests' | 'guide' | 'panel' | 'interpolation'>(() =>
     /^#panel(?:\/|$)/.test(location.hash) ? 'panel' : 'solver');
   
@@ -181,7 +181,7 @@ export default function App() {
           <button type="button" onClick={() => setActiveTab('panel')} aria-current={activeTab === 'panel' ? 'page' : undefined}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">پنل دانشجو و استاد</button>
         </div>
-        {activeTab === 'panel' && <AccountPanel />}
+        {activeTab === 'panel' && <AccountPanel account={account} onLogout={onLogout} />}
         {activeTab === 'interpolation' && <InterpolationPanel />}
         {/* Tab 1: Interactive Solver */}
         {activeTab === 'solver' && (
@@ -357,7 +357,10 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>سامانه محاسبات عددی دانشجویی · حل معادلات غیرخطی f(x) = 0</span>
-          <a href="https://ieaum.ir/" className="hover:text-sky-800">مهندسان صنایع دانشگاه آزاد مشهد · IEAUM</a>
+          <a href="https://ieaum.ir/" className="inline-flex items-center gap-2 hover:text-sky-800">
+            <img src="/ieaum-logo.png" alt="" width="26" height="26" className="rounded-md" />
+            مهندسان صنایع دانشگاه آزاد مشهد · IEAUM
+          </a>
         </div>
       </footer>
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
+import { BookOpen, CheckCircle2, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'solver' | 'benchmarks' | 'tests' | 'guide' | 'panel' | 'interpolation';
@@ -15,9 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onQuick
           
           {/* Zone 1: Single text wordmark */}
           <div className="flex min-w-0 items-center gap-2 lg:gap-3">
-            <div className="brand-symbol size-8 shrink-0 lg:size-9 rounded-lg flex items-center justify-center text-white">
-              <Calculator className="w-5 h-5" />
-            </div>
+            <img src="/ieaum-logo.png" alt="" width="36" height="36" className="size-8 shrink-0 rounded-lg lg:size-9" />
             <div className="flex flex-col">
               <b className="brand-wordmark" dir="ltr">NUMRALAB</b>
             </div>

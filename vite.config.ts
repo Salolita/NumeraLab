@@ -7,7 +7,7 @@ export default defineConfig(() => {
   return {
     base: './',
     plugins: [react(), tailwindcss()],
-    build: { rollupOptions: { input: { main: 'index.html', register: 'register.html', presentation: 'presentation.html' } } },
+    build: { rollupOptions: { input: { main: 'index.html', register: 'register.html', continue: 'continue.html', presentation: 'presentation.html' } } },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

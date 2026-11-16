@@ -1,19 +1,23 @@
 import {
   cookieValue, currentProfile, digest, field, limit, PortalError,
-  query, readBody, reply, setting, studentNumber, token, verifyPassword, write,
+  query, readBody, reply, rpc, setting, studentNumber, token, tokenPattern, verifyPassword, write,
 } from '../server/portal-store.js';
-import { eligibleStudent, telegramWebhook } from '../server/portal-bot.js';
+import { eligibleStudent, refreshPortalMenu, telegramWebhook } from '../server/portal-bot.js';
 import { quizAction } from '../server/portal-quizzes.js';
 import { telegramIdentity } from '../server/telegram-identity.js';
 import { admins, notifyReview, queueAccount, reviewStatusText } from '../server/account-review.js';
-import { panelButton, telegram as sendTelegram } from '../server/telegram-delivery.js';
+import { welcomeText } from '../src/utils/entry.js';
+import { telegram as sendTelegram } from '../server/telegram-delivery.js';
 
 export default {
   async fetch(request: Request) {
     try {
       if (request.method === 'GET') {
         const enabled = process.env.PORTAL_ENABLED === 'true';
-        return reply({ profile: enabled ? await currentProfile(request) : null, enabled });
+        const profile = enabled ? await currentProfile(request) : null;
+        if (!profile) return reply({ profile: null, enabled });
+        const { telegram_id, ...safe } = profile;
+        return reply({ profile: { ...safe, telegramConnected: Boolean(telegram_id) }, enabled });
       }
       if (request.method !== 'POST') return reply({ error: 'درخواست معتبر نیست.' }, 405);
       const url = new URL(request.url);
@@ -22,6 +26,23 @@ export default {
       if (request.headers.get('origin') !== setting('PORTAL_ORIGIN')) throw new PortalError(403, 'درخواست معتبر نیست.');
       const body = await readBody(request);
       const action = field(body, 'action');
+      const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      if (action === 'redeem-login') {
+        await limit(`redeem:ip:${ip}`, 200);
+        const ticket = field(body, 'ticket');
+        if (!tokenPattern.test(ticket)) throw new PortalError(401, 'لینک ورود معتبر نیست. دوباره از ربات اقدام کنید.');
+        const ticketHash = digest(ticket);
+        const [issued] = await query<{ profile_id: string }[]>('portal_tickets', {
+          token_hash: `eq.${ticketHash}`, expires_at: `gt.${new Date().toISOString()}`, profile_id: 'not.is.null', select: 'profile_id',
+        });
+        const session = token();
+        if (!issued || !await rpc<boolean>('portal_open_session', { p_ticket: ticketHash, p_user: issued.profile_id, p_session: digest(session) })) {
+          throw new PortalError(401, 'لینک ورود منقضی شده یا قبلاً استفاده شده است. دوباره از ربات اقدام کنید.');
+        }
+        const previous = cookieValue(request);
+        if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
+        return reply({ loggedIn: true }, 200, session);
+      }
       if (action === 'logout') {
         const session = cookieValue(request);
         if (session) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(session)}` });
@@ -33,6 +54,7 @@ export default {
         return reply(await quizAction(action, body, profile));
       }
       if (action !== 'register' && action !== 'login' && action !== 'link-telegram') throw new PortalError(400, 'درخواست معتبر نیست.');
+      const chat = telegramIdentity(field(body, 'telegramInitData'));
 
       const username = field(body, 'username').trim().toLowerCase();
       const password = field(body, 'password');
@@ -43,11 +65,12 @@ export default {
       if (action === 'register') {
         const role = field(body, 'role');
         if (role !== 'student' && role !== 'teacher') throw new PortalError(400, 'نوع حساب معتبر نیست.');
-        const initData = field(body, 'telegramInitData');
-        const telegram = initData ? telegramIdentity(initData) : null;
-        const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
         await limit(`register:ip:${ip}`, 12);
-        if (telegram) await limit(`register:telegram:${telegram}`, 8);
+        await limit(`register:telegram:${chat}`, 8);
+        const [linkedAccount] = await query<{ username: string }[]>('portal_profiles', {
+          telegram_id: `eq.${chat}`, select: 'username', limit: '1',
+        });
+        if (linkedAccount && linkedAccount.username !== username) throw new PortalError(409, 'این تلگرام قبلاً به یک حساب متصل شده است.');
         const first = field(body, 'firstName').trim();
         const last = field(body, 'lastName').trim();
         if (!first || !last || first.length > 80 || last.length > 80 || /[\p{Cc}\p{Cf}]/u.test(first.replaceAll('\u200c', '') + last.replaceAll('\u200c', ''))) {
@@ -56,7 +79,7 @@ export default {
         if (!admins().length) throw new PortalError(503, 'مدیر ثبت‌نام هنوز تنظیم نشده است.');
         const phone = studentNumber(field(body, 'phone')).replace(/[\s()-]/g, '');
         if (!/^\+?[0-9]{10,15}$/.test(phone)) throw new PortalError(422, 'شمارهٔ تماس را بررسی کنید.');
-        const profile = { username, first_name: first, last_name: last, phone, telegram_id: telegram };
+        const profile = { username, first_name: first, last_name: last, phone, telegram_id: chat };
         let account;
         if (role === 'student') {
           const number = studentNumber(field(body, 'studentNumber'));
@@ -75,45 +98,45 @@ export default {
           account = await queueAccount({ ...profile, role, course_name: course }, password);
         }
         const notified = account ? await notifyReview(account) : true;
+        if (account) await refreshPortalMenu(chat, true).catch(() => {});
         return reply({ registered: true, pending: true, notified }, account ? 201 : 200);
       }
 
-      const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
       await limit(`login:ip:${ip}`, 35);
       await limit(`login:username:${username}`, 10);
+      await limit(`login:telegram:${chat}`, 18);
       const invalid = 'نام کاربری یا رمز عبور معتبر نیست.';
       const id = await verifyPassword(username, password);
       type LoginProfile = { id: string; active: boolean; review_status: keyof typeof reviewStatusText; telegram_id: string | null };
       let [expected] = await query<LoginProfile[]>('portal_profiles', {
         id: `eq.${id}`, username: `eq.${username}`, select: 'id,active,review_status,telegram_id', limit: '1',
       });
-      if (action === 'link-telegram') {
-        const chat = telegramIdentity(field(body, 'telegramInitData'));
-        if (!expected) throw new PortalError(404, 'ابتدا ثبت‌نام را کامل کنید.');
-        if (expected.telegram_id !== chat) {
-          if (expected.telegram_id) throw new PortalError(409, 'این حساب قبلاً به یک تلگرام متصل شده است.');
-          const [linked] = await write<LoginProfile[]>('portal_profiles', 'PATCH', { telegram_id: chat }, {
-            id: `eq.${id}`, telegram_id: 'is.null', select: 'id,active,review_status,telegram_id',
-          });
-          if (!linked) throw new PortalError(409, 'اتصال هم‌زمان انجام شد. وضعیت حساب را در ربات بررسی کنید.');
-          expected = linked;
-        }
-        const status = expected.review_status === 'approved' && !expected.active
-          ? 'حساب در حال حاضر غیرفعال است.' : reviewStatusText[expected.review_status];
-        const notified = await sendTelegram('sendMessage', { chat_id: chat, text: status, reply_markup: panelButton() })
-          .then(() => true, () => false);
-        return reply({ status, notified });
+      if (expected && expected.telegram_id !== chat) {
+        if (expected.telegram_id) throw new PortalError(409, 'این حساب قبلاً به یک تلگرام متصل شده است.');
+        const [linked] = await write<LoginProfile[]>('portal_profiles', 'PATCH', { telegram_id: chat }, {
+          id: `eq.${id}`, telegram_id: 'is.null', select: 'id,active,review_status,telegram_id',
+        });
+        if (!linked) throw new PortalError(409, 'اتصال هم‌زمان انجام شد. وضعیت حساب را در ربات بررسی کنید.');
+        expected = linked;
       }
       if (!expected?.active) {
         if (expected?.review_status === 'pending') throw new PortalError(403, 'درخواست شما در انتظار تأیید مدیر است.');
         if (expected?.review_status === 'rejected') throw new PortalError(403, 'درخواست شما لغو شده است. با مدیر گروه تماس بگیرید.');
         throw new PortalError(401, invalid);
       }
-      const session = token();
-      await write('portal_sessions', 'POST', { token_hash: digest(session), profile_id: expected.id });
-      const previous = cookieValue(request);
-      if (previous) await write('portal_sessions', 'DELETE', undefined, { token_hash: `eq.${digest(previous)}` });
-      return reply({ loggedIn: true }, 200, session);
+      const target = field(body, 'target');
+      const destination = target === 'home' || target === 'solver' ? target : 'panel';
+      const ticket = token();
+      await write('portal_tickets', 'POST', { token_hash: digest(ticket), profile_id: id, telegram_id: chat,
+        expires_at: new Date(Date.now() + 180_000).toISOString() });
+      const handoff = new URL('/continue.html', setting('PORTAL_ORIGIN'));
+      handoff.searchParams.set('to', destination);
+      handoff.hash = ticket;
+      await sendTelegram('sendMessage', { chat_id: chat, text: welcomeText, reply_markup: { inline_keyboard: [[{
+        text: 'بزن بریم!', url: handoff.href,
+      }]] } }).catch(() => {});
+      await refreshPortalMenu(chat, true).catch(() => {});
+      return reply({ nextUrl: handoff.href });
     } catch (error) {
       if (error instanceof PortalError) return reply({ error: error.message }, error.status);
       return reply({ error: 'درخواست انجام نشد. دوباره تلاش کنید.' }, 503);

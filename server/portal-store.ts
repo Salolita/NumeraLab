@@ -81,10 +81,11 @@ export interface Profile {
   last_name: string;
   active: boolean;
   course_name?: string | null;
+  telegram_id?: string | null;
 }
 
 export function cookieValue(request: Request) {
-  const cookie = request.headers.get('cookie')?.match(/(?:^|;\s*)__Host-numralab=([A-Za-z0-9_-]{32})(?:;|$)/)?.[1];
+  const cookie = request.headers.get('cookie')?.match(/(?:^|;\s*)__Host-ieaum=([A-Za-z0-9_-]{32})(?:;|$)/)?.[1];
   return cookie ?? null;
 }
 
@@ -96,14 +97,15 @@ export async function currentProfile(request: Request) {
   });
   if (!session) return null;
   const [profile] = await query<Profile[]>('portal_profiles', {
-    id: `eq.${session.profile_id}`, active: 'eq.true', select: 'id,username,role,first_name,last_name,active,course_name', limit: '1',
+    id: `eq.${session.profile_id}`, active: 'eq.true', telegram_id: 'not.is.null',
+    select: 'id,username,role,first_name,last_name,active,course_name,telegram_id', limit: '1',
   });
   return profile ?? null;
 }
 
 export function reply(body: unknown, status = 200, session?: string | null) {
   const headers: Record<string, string> = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
-  if (session !== undefined) headers['Set-Cookie'] = `__Host-numralab=${session ?? ''}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${session ? 28800 : 0}`;
+  if (session !== undefined) headers['Set-Cookie'] = `__Host-ieaum=${session ?? ''}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${session ? 28800 : 0}`;
   return Response.json(body, { status, headers });
 }
 
