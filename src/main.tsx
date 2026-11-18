@@ -1,11 +1,29 @@
 import {createRoot} from 'react-dom/client';
 import {useEffect, useState, type FormEvent} from 'react';
 import App from './App.tsx';
-import type { Account } from './components/AccountPanel';
 import { botReset, botSignup } from './utils/entry';
 import { portal } from './utils/portal';
 import { telegramLaunchData } from './utils/telegram-launch';
 import './index.css';
+
+interface Account { id: string }
+
+async function loadAccount() {
+  const { profile } = await portal<{ profile: Account | null }>();
+  if (profile || location.hostname !== 'numeralab.ieaum.ir') return profile;
+  try {
+    const response = await fetch('https://ieaum.ir/api/account?transfer=site', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: '{}', signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return null;
+    const { ticket } = await response.json() as { ticket: string };
+    await portal({ action: 'redeem-login', ticket });
+    return (await portal<{ profile: Account | null }>()).profile;
+  } catch {
+    return null;
+  }
+}
 
 function ServiceEntry() {
   const [account, setAccount] = useState<Account | null | undefined>();
@@ -15,7 +33,7 @@ function ServiceEntry() {
   const button = 'inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2 font-bold disabled:opacity-50';
   const input = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2';
   useEffect(() => {
-    portal<{ profile: Account | null }>().then(({ profile }) => setAccount(profile)).catch((failure: Error) => {
+    loadAccount().then(setAccount).catch((failure: Error) => {
       setError(failure.message);
       setAccount(null);
     });
@@ -39,7 +57,7 @@ function ServiceEntry() {
     }
   }
 
-  if (account) return <App account={account} onLogout={() => setAccount(null)} />;
+  if (account) return <App />;
   return <div className="grid min-h-dvh place-items-center px-4 py-6 sm:px-6">
     <main className="numralab w-full max-w-2xl rounded-3xl p-4 sm:p-10">
       <section className="solver-panel space-y-5 p-5 sm:p-7">
@@ -68,7 +86,9 @@ function ServiceEntry() {
   </div>;
 }
 
-if (telegramLaunchData(location.hash)) {
+if (/^#panel(?:\/|$)/.test(location.hash)) {
+  location.replace('https://ieaum.ir/panel/');
+} else if (telegramLaunchData(location.hash)) {
   // Some clients open the bot's main Mini App at the site's root.
   location.replace('/register.html' + location.hash);
 } else {

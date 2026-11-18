@@ -10,12 +10,13 @@ history.replaceState(null, '', url.pathname);
 
 if (!ticket) {
   status.textContent = entryGuide;
-} else if (target === 'presentation') {
-  const destination = new URL('https://ieaum.ir/erae-tori/');
+} else if (target !== 'solver') {
+  const path = target === 'presentation' ? '/erae-tori/' : target === 'home' ? '/' : '/panel/';
+  const destination = new URL(path, 'https://ieaum.ir');
   destination.hash = new URLSearchParams({ ticket }).toString();
   location.replace(destination.href);
 } else {
   portal({ action: 'redeem-login', ticket }).then(() => {
-    location.replace(target === 'home' ? 'https://ieaum.ir/' : target === 'solver' ? '/' : '/#panel');
+    location.replace('/');
   }).catch((error: Error) => { status.textContent = error.message; });
 }

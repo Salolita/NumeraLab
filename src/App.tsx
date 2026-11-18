@@ -13,7 +13,6 @@ import { FunctionPlot } from './components/FunctionPlot';
 import { ValidationTestsModal } from './components/ValidationTestsModal';
 import { EducationalGuide } from './components/EducationalGuide';
 import { WorkedSolution } from './components/WorkedSolution';
-import { AccountPanel, type Account } from './components/AccountPanel';
 import { InterpolationPanel } from './components/InterpolationPanel';
 import { Calculator, Play, Sparkles } from 'lucide-react';
 
@@ -36,9 +35,8 @@ function evaluateAt(fn: ((x: number) => number) | null, x: number) {
   try { return fn(x); } catch { return null; }
 }
 
-export default function App({ account, onLogout }: { account: Account; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<'solver' | 'benchmarks' | 'tests' | 'guide' | 'panel' | 'interpolation'>(() =>
-    /^#panel(?:\/|$)/.test(location.hash) ? 'panel' : 'solver');
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'solver' | 'benchmarks' | 'tests' | 'guide' | 'interpolation'>('solver');
   
   // Mathematical expression state
   const [expression, setExpression] = useState<string>('x^3 - x - 2');
@@ -132,12 +130,6 @@ export default function App({ account, onLogout }: { account: Account; onLogout:
   useEffect(() => { solve(); }, []);
 
   useEffect(() => {
-    const openPanel = () => { if (/^#panel(?:\/|$)/.test(location.hash)) setActiveTab('panel'); };
-    window.addEventListener('hashchange', openPanel);
-    return () => window.removeEventListener('hashchange', openPanel);
-  }, []);
-
-  useEffect(() => {
     if (!isPlaying || activeStep >= iterationCount) return;
     const timer = window.setTimeout(() => {
       const nextStep = activeStep + 1;
@@ -178,10 +170,8 @@ export default function App({ account, onLogout }: { account: Account; onLogout:
         <div className="mb-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => setActiveTab('interpolation')} aria-current={activeTab === 'interpolation' ? 'page' : undefined}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">درون‌یابی و ورود از تصویر</button>
-          <button type="button" onClick={() => setActiveTab('panel')} aria-current={activeTab === 'panel' ? 'page' : undefined}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">پنل دانشجو و استاد</button>
+          <a href="https://ieaum.ir/panel/" className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-sky-800">پنل دانشجو و استاد</a>
         </div>
-        {activeTab === 'panel' && <AccountPanel account={account} onLogout={onLogout} />}
         {activeTab === 'interpolation' && <InterpolationPanel />}
         {/* Tab 1: Interactive Solver */}
         {activeTab === 'solver' && (
