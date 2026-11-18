@@ -2,13 +2,12 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
-import { pdfAssets } from './erae-tori/pdf-assets';
 
 export default defineConfig(() => {
   return {
     base: './',
-    plugins: [react(), tailwindcss(), pdfAssets()],
-    build: { rollupOptions: { input: { main: 'index.html', register: 'register.html', continue: 'continue.html', presentation: 'presentation.html', eraeTori: 'erae-tori.html' } } },
+    plugins: [react(), tailwindcss()],
+    build: { rollupOptions: { input: { main: 'index.html', register: 'register.html', continue: 'continue.html', presentation: 'presentation.html', oldPresentationLink: 'erae-tori.html' } } },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
