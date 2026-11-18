@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { checkQuestion } from '../presentation/questions.js';
-import { digest, equalSecret, limit, query, readBody, write } from './portal-store.js';
+import { digest, equalSecret, limit, query, readBody, write } from '@ieaum/platform/store';
 
 const blank = () => ({room:null,questions:[],position:-1,players:{}});
 const json = (data,status=200) => Response.json(data,{status,headers:{'Cache-Control':'no-store'}});

@@ -1,4 +1,4 @@
-import { currentProfile, limit, PortalError, readBody, reply, setting } from '../server/portal-store.js';
+import { currentProfile, limit, PortalError, readBody, reply, setting } from '@ieaum/platform/store';
 import { isInterpolationInput } from '../src/utils/interpolation.js';
 
 export default {
