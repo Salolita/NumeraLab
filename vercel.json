@@ -5,7 +5,8 @@
     },
     "api/presentation.ts": {
       "includeFiles": "presentation/slides/*.jpg"
-    }
+    },
+    "api/week.ts": { "maxDuration": 60 }
   },
   "headers": [
     {
@@ -30,5 +31,6 @@
       ]
     }
   ],
-  "installCommand": "npm ci"
+  "installCommand": "npm ci",
+  "crons": [{ "path": "/api/week", "schedule": "30 3 * * *" }]
 }

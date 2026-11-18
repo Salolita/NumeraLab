@@ -12,6 +12,7 @@ if (!ticket) {
   status.textContent = entryGuide;
 } else {
   portal({ action: 'redeem-login', ticket }).then(() => {
-    location.replace(target === 'home' ? 'https://ieaum.ir/' : target === 'solver' ? '/' : '/#panel');
+    location.replace(target === 'home' ? 'https://ieaum.ir/' : target === 'solver' ? '/'
+      : target === 'presentation' ? '/erae-tori.html' : '/#panel');
   }).catch((error: Error) => { status.textContent = error.message; });
 }
