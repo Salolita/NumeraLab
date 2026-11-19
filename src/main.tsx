@@ -7,8 +7,11 @@ import { telegramLaunchData } from './utils/telegram-launch';
 import './index.css';
 
 interface Account { id: string }
+const ticketFromBot = new URLSearchParams(location.hash.slice(1)).get('ticket');
+if (ticketFromBot) history.replaceState(null, '', location.pathname + location.search);
 
 async function loadAccount() {
+  if (ticketFromBot) await portal({ action: 'redeem-login', ticket: ticketFromBot }).catch(() => {});
   const { profile } = await portal<{ profile: Account | null }>();
   if (profile || location.hostname !== 'numeralab.ieaum.ir') return profile;
   try {
@@ -38,6 +41,10 @@ function ServiceEntry() {
       setAccount(null);
     });
   }, []);
+
+  useEffect(() => {
+    if (account && !ticketFromBot) void portal({ action: 'service:opened', target: 'solver' }).catch(() => {});
+  }, [account]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
