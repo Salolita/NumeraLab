@@ -1,2 +1,2 @@
-import {sessionStatus} from '../server/live-code-auth';
-export default {fetch: sessionStatus};
+import {sessionStatus} from '../server/live-code-auth.js';
+export default {fetch(request: Request) { return sessionStatus(request); }};

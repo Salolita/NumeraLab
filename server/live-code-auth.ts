@@ -1,5 +1,5 @@
 import {createCipheriv, createDecipheriv, createHmac, createPrivateKey, hkdfSync, randomBytes, sign} from 'node:crypto';
-import {cookieValue, digest, equalSecret, readBody, reply, setting, uuidPattern} from '@ieaum/platform/store';
+import {cookieValue, digest, equalSecret, limit, PortalError, readBody, reply, setting, uuidPattern} from '@ieaum/platform/store';
 
 const audience = 'ieaum-live-code';
 const unavailable = 'این بخش توسط مدیر غیرفعال شده است.';
@@ -7,9 +7,18 @@ const nonce = /^[A-Za-z0-9_-]{43}$/;
 const hash = /^[a-f0-9]{64}$/;
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const recentGrants = new Map<string, {count: number; expires: number}>();
+const issuerHost = 'https://numeralab.ieaum.ir';
+let grantCount = 0;
+let grantWindowEnd = 0;
 
 function grantQuota(id: string) {
   const now = Date.now();
+  if (now >= grantWindowEnd) {
+    grantCount = 0;
+    grantWindowEnd = now + 60_000;
+  }
+  if (grantCount >= 72) return false;
+  grantCount++;
   for (const [key, entry] of recentGrants) if (entry.expires <= now) recentGrants.delete(key);
   const entry = recentGrants.get(id);
   if (entry) return ++entry.count <= 6;
@@ -23,6 +32,17 @@ function origin(name: string) {
   const url = new URL(input);
   if (url.protocol !== 'https:' || url.origin !== input) throw new Error('Invalid Live Code origin');
   return input;
+}
+
+function issuerConfig(request: Request) {
+  const portal = origin('LIVECODE_PORTAL_ORIGIN');
+  const issuer = origin('LIVECODE_AUTH_ISSUER');
+  const backend = origin('LIVECODE_HANDOFF_ORIGIN');
+  const kid = setting('LIVECODE_SIGNING_KID');
+  if (process.env.VERCEL_ENV !== 'production' || new URL(request.url).origin !== issuerHost
+      || portal !== 'https://ieaum.ir' || issuer !== portal || !/^https:\/\/[a-z0-9.-]+\.ts\.net$/.test(backend)
+      || !/^prod-[a-f0-9]{12}$/.test(kid)) throw new Error('Wrong issuer environment');
+  return {portal, issuer, backend, kid};
 }
 
 function sealKey() {
@@ -84,7 +104,8 @@ export async function grant(request: Request) {
   if (process.env.LIVECODE_AUTH_ENABLED !== '1') return reply({error: unavailable}, 503);
   if (request.method !== 'POST') return reply({error: 'درخواست معتبر نیست.'}, 405);
   try {
-    if (request.headers.get('origin') !== origin('LIVECODE_PORTAL_ORIGIN')
+    const {portal, issuer, backend, kid} = issuerConfig(request);
+    if (request.headers.get('origin') !== portal
         || request.headers.get('sec-fetch-site') === 'cross-site') return reply({error: 'درخواست معتبر نیست.'}, 403);
     const cookie = cookieValue(request);
     if (!cookie) return reply({error: 'ابتدا وارد حساب IEAUM شوید.'}, 401);
@@ -94,16 +115,12 @@ export async function grant(request: Request) {
     }
     const tokenHash = digest(cookie);
     if (!grantQuota(tokenHash)) return reply({error: 'کمی صبر کنید و دوباره تلاش کنید.'}, 429);
+    await limit('live-code:grant:production:v1', 160);
     const session = await lookup(tokenHash, undefined, true);
     if (!session) return reply({error: 'نشست معتبر یا حساب فعال پیدا نشد.'}, 401);
     const profile = session.portal_profiles;
-    const issuer = origin('LIVECODE_AUTH_ISSUER');
-    if (issuer !== origin('LIVECODE_PORTAL_ORIGIN')) throw new Error('Wrong issuer environment');
-    const backend = origin('LIVECODE_HANDOFF_ORIGIN');
     const key = sealKey();
     const now = Math.floor(Date.now() / 1000);
-    const kid = setting('LIVECODE_SIGNING_KID');
-    if (!/^[\w-]{1,40}$/.test(kid)) throw new Error('Invalid key identifier');
     const checkKey = Buffer.from(hkdfSync('sha256', key, '', 'ieaum-live-code/session-fingerprint', 32));
     const check = createHmac('sha256', checkKey).update(tokenHash).digest('base64url');
     const binding = seal({hash: tokenHash, id: profile.id, exp: Math.floor(Date.parse(session.expires_at) / 1000)}, key, issuer);
@@ -120,7 +137,10 @@ export async function grant(request: Request) {
     });
     if (!response.ok) return reply({error: unavailable}, 503);
     return reply({ok: true});
-  } catch {
+  } catch (error) {
+    if (error instanceof PortalError && error.status === 429) {
+      return reply({error: 'کمی صبر کنید و دوباره تلاش کنید.'}, 429);
+    }
     return reply({error: unavailable}, 503);
   }
 }
@@ -133,10 +153,11 @@ export async function sessionStatus(request: Request) {
     if (credential.length < 43 || !equalSecret(request.headers.get('authorization') ?? '', 'Bearer ' + credential)) {
       return reply({valid: false}, 403);
     }
+    const {issuer} = issuerConfig(request);
     const {binding} = await readBody(request, 2048);
     if (typeof binding !== 'string') return reply({valid: false}, 400);
     let record: Binding;
-    try { record = unseal(binding, sealKey(), origin('LIVECODE_AUTH_ISSUER')); }
+    try { record = unseal(binding, sealKey(), issuer); }
     catch { return reply({valid: false}); }
     if (record.exp <= Math.floor(Date.now() / 1000)) return reply({valid: false});
     return reply({valid: Boolean(await lookup(record.hash, record.id))});

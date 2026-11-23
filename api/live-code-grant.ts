@@ -1,2 +1,2 @@
-import {grant} from '../server/live-code-auth';
-export default {fetch: grant};
+import {grant} from '../server/live-code-auth.js';
+export default {fetch(request: Request) { return grant(request); }};
