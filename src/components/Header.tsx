@@ -79,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onQuick
 
           {/* Zone 3: Primary Action */}
           <div className="flex items-center gap-2 shrink-0">
-            <a href="https://ieaum.ir/" className={`${actionClass} border border-slate-200 hover:text-sky-800`} aria-label="بازگشت به درگاه IEAUM">IEAUM ↗</a>
+            <a href="https://ieaum.ir/" className={`${actionClass} border border-slate-200 hover:text-sky-800`} aria-label="بازگشت به درگاه IEAUM">صفحه اصلی ↗</a>
             <button
               type="button"
               onClick={onQuickSolve}
