@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@ieaum/platform": "https://codeload.github.com/Salolita/ieaum/tar.gz/d445e5bb0a82b2f89d390181420ac95b8ec3f6e4",
+    "@ieaum/platform": "https://codeload.github.com/Salolita/ieaum/tar.gz/5f8d90af0295a3e8f9a889720125afb6af41381e",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",

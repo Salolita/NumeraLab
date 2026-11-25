@@ -1,3 +1,4 @@
+import { recordDeparture } from '@ieaum/platform/presence';
 import {createCipheriv, createDecipheriv, createHmac, createPrivateKey, hkdfSync, randomBytes, sign} from 'node:crypto';
 import {cookieValue, digest, equalSecret, limit, PortalError, readBody, reply, setting, uuidPattern} from '@ieaum/platform/store';
 
@@ -154,12 +155,20 @@ export async function sessionStatus(request: Request) {
       return reply({valid: false}, 403);
     }
     const {issuer} = issuerConfig(request);
-    const {binding} = await readBody(request, 2048);
+    const {binding, departureSession} = await readBody(request, 2048);
     if (typeof binding !== 'string') return reply({valid: false}, 400);
     let record: Binding;
     try { record = unseal(binding, sealKey(), issuer); }
     catch { return reply({valid: false}); }
     if (record.exp <= Math.floor(Date.now() / 1000)) return reply({valid: false});
+    if (departureSession !== undefined) {
+      if (typeof departureSession !== 'string' || !/^[A-Za-z0-9_-]{20,80}$/.test(departureSession)) return reply({valid: false}, 400);
+      const session = await lookup(record.hash, record.id, true);
+      const profile = session?.portal_profiles;
+      if (profile) await recordDeparture('livecode', departureSession, profile.id,
+        profile.first_name + ' ' + profile.last_name, 'جلسهٔ Live Code').catch(() => {});
+      return reply({valid: Boolean(profile)});
+    }
     return reply({valid: Boolean(await lookup(record.hash, record.id))});
   } catch {
     return reply({valid: false}, 503);
