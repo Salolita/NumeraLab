@@ -1,1 +1,1 @@
-export { default } from '../server/presentation.js';
+export { default } from '@ieaum/platform/economics-presentation';
